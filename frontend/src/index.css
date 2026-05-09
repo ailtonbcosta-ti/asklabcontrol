@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .btn { @apply inline-flex items-center justify-center px-3 py-2 rounded-md text-sm font-medium transition; }
+  .btn-primary { @apply btn bg-brand text-white hover:bg-brand-dark; }
+  .btn-outline { @apply btn border border-slate-300 hover:bg-slate-100; }
+  .btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700; }
+  .input { @apply w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand; }
+  .card { @apply bg-white rounded-lg shadow-sm border border-slate-200 p-4; }
+  .label { @apply block text-xs font-medium text-slate-600 mb-1; }
+  .table { @apply w-full text-sm; }
+  .table th { @apply text-left font-semibold text-slate-700 px-2 py-2 border-b border-slate-200; }
+  .table td { @apply px-2 py-2 border-b border-slate-100; }
+}
+
+/* Impressão A4 e térmica 80mm */
+@media print {
+  .no-print { display: none !important; }
+  body { background: white !important; }
+}
+.print-thermal { width: 80mm; }
+@page thermal { size: 80mm auto; margin: 2mm; }

@@ -1,0 +1,448 @@
+// ASKLabControl — schema completo
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Auth & users ────────────────────────────────────────
+enum Role {
+  ADMIN
+  GESTOR
+  OPERADOR
+}
+
+model User {
+  id            Int       @id @default(autoincrement())
+  matricula     String?   @unique @db.Char(7)
+  nome          String
+  email         String    @unique
+  senhaHash     String
+  role          Role      @default(OPERADOR)
+  ativo         Boolean   @default(true)
+  ultimoLogin   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  authorizations Authorization[]
+  sigtapImports  SigtapCompetencia[]
+  auditLogs      AuditLog[]
+
+  @@map("users")
+}
+
+// ─── Conexão PEC (singleton, configurável via UI) ───────
+model PecConnection {
+  id                Int      @id @default(1)
+  ativo             Boolean  @default(false)
+  host              String?
+  porta             Int      @default(5432)
+  database          String?
+  usuario           String?
+  senhaCriptografada String?
+  sslMode           String   @default("disable") // disable | require
+  schemaName        String   @default("public")
+  ultimoTesteEm     DateTime?
+  ultimoTesteOk     Boolean?
+  ultimoTesteMsg    String?
+  updatedAt         DateTime @updatedAt
+
+  @@map("pec_connection")
+}
+
+// ─── Estabelecimento (singleton) ─────────────────────────
+model EstablishmentConfig {
+  id                       Int      @id @default(1)
+  razaoSocial              String
+  nomeFantasia             String?
+  cnpj                     String?
+  endereco                 String?
+  cidade                   String?
+  uf                       String?
+  cep                      String?
+  telefone                 String?
+  email                    String?
+  logoUrl                  String?  // logotipo do sistema (sidebar, etc)
+  logoA4Url                String?  // logotipo para impressão A4
+  logoThermal80Url         String?  // logotipo para impressão térmica 80mm (preto-e-branco)
+  validadeAutorizacaoDias  Int      @default(30)
+  cabecalhoImpressao       String?
+  rodapeImpressao          String?
+  sigtapCompetenciaVigente String?
+  updatedAt                DateTime @updatedAt
+
+  @@map("establishment_config")
+}
+
+// ─── Pacientes ───────────────────────────────────────────
+model Patient {
+  id              Int       @id @default(autoincrement())
+  cpf             String?   @unique
+  cns             String?   @unique
+  nome            String
+  nomeMae         String?
+  dataNascimento  DateTime?
+  sexo            String?   @db.Char(1)
+  raca            String?
+  etnia           String?
+  nacionalidade   String?
+  telefone        String?
+  email           String?
+  cep             String?
+  logradouro      String?
+  numero          String?
+  complemento     String?
+  bairro          String?
+  cidade          String?
+  uf              String?  @db.Char(2)
+  municipioIbge   String?
+  pecSyncedAt     DateTime?
+  pecSourceId     String?
+  observacoes     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  authorizations  Authorization[]
+  pendingItems    PendingItem[]
+
+  @@index([nome])
+  @@map("patients")
+}
+
+// ─── Procedimentos & Laboratórios ────────────────────────
+model Procedure {
+  id             Int      @id @default(autoincrement())
+  codigo         String   @unique  // código interno (pode espelhar SIGTAP)
+  descricao      String
+  sigtapCodigo   String?
+  sigtapSnapshot Json?
+  ativo          Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  contractProcedures ContractProcedure[]
+  authorizationItems AuthorizationItem[]
+  pendingItems       PendingItem[]
+
+  @@map("procedures")
+}
+
+model Laboratory {
+  id           Int       @id @default(autoincrement())
+  razaoSocial  String
+  nomeFantasia String?
+  cnpj         String?   @unique
+  endereco     String?
+  cidade       String?
+  uf           String?
+  cep          String?
+  telefone     String?
+  email        String?
+  responsavel  String?
+  ativo        Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  contracts      Contract[]
+  authorizations Authorization[]
+
+  @@map("laboratories")
+}
+
+// ─── Contratos ───────────────────────────────────────────
+model Contract {
+  id                   Int       @id @default(autoincrement())
+  numero               String    @unique
+  numeroCredenciamento String?
+  laboratoryId         Int
+  laboratory           Laboratory @relation(fields: [laboratoryId], references: [id])
+  vigenciaInicio       DateTime
+  vigenciaFim          DateTime
+  observacoes          String?
+  ativo                Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  procedures     ContractProcedure[]
+  authorizations Authorization[]
+
+  @@map("contracts")
+}
+
+model ContractProcedure {
+  id              Int       @id @default(autoincrement())
+  contractId      Int
+  contract        Contract  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  procedureId     Int
+  procedure       Procedure @relation(fields: [procedureId], references: [id])
+  qtdMensal       Int
+  valorUnitario   Decimal   @default(0) @db.Decimal(10, 2)
+  ativo           Boolean   @default(true)
+
+  monthlyBalances    ContractMonthlyBalance[]
+  authorizationItems AuthorizationItem[]
+
+  @@unique([contractId, procedureId])
+  @@map("contract_procedures")
+}
+
+model ContractMonthlyBalance {
+  id                  Int               @id @default(autoincrement())
+  contractProcedureId Int
+  contractProcedure   ContractProcedure @relation(fields: [contractProcedureId], references: [id], onDelete: Cascade)
+  ano                 Int
+  mes                 Int
+  qtdConsumida        Int               @default(0)
+  updatedAt           DateTime          @updatedAt
+
+  @@unique([contractProcedureId, ano, mes])
+  @@index([ano, mes])
+  @@map("contract_monthly_balance")
+}
+
+// ─── Autorizações ────────────────────────────────────────
+enum AuthorizationStatus {
+  EMITIDA
+  CANCELADA
+  PARCIAL_PENDENTE
+}
+
+model Authorization {
+  id                   Int                 @id @default(autoincrement())
+  codigo               String              @unique
+  patientId            Int
+  patient              Patient             @relation(fields: [patientId], references: [id])
+  userId               Int
+  user                 User                @relation(fields: [userId], references: [id])
+  laboratoryId         Int
+  laboratory           Laboratory          @relation(fields: [laboratoryId], references: [id])
+  contractId           Int
+  contract             Contract            @relation(fields: [contractId], references: [id])
+  emitidaEm            DateTime            @default(now())
+  validaAte            DateTime
+  status               AuthorizationStatus @default(EMITIDA)
+  observacoes          String?
+  parentAuthorizationId Int?
+  parentAuthorization  Authorization?      @relation("AuthSplit", fields: [parentAuthorizationId], references: [id])
+  splits               Authorization[]     @relation("AuthSplit")
+  canceledAt           DateTime?
+  cancelReason         String?
+
+  items AuthorizationItem[]
+
+  @@index([emitidaEm])
+  @@index([laboratoryId, emitidaEm])
+  @@map("authorizations")
+}
+
+model AuthorizationItem {
+  id                     Int               @id @default(autoincrement())
+  authorizationId        Int
+  authorization          Authorization     @relation(fields: [authorizationId], references: [id], onDelete: Cascade)
+  procedureId            Int
+  procedure              Procedure         @relation(fields: [procedureId], references: [id])
+  contractProcedureId    Int
+  contractProcedure      ContractProcedure @relation(fields: [contractProcedureId], references: [id])
+  qtd                    Int               @default(1)
+  valorUnitarioSnapshot  Decimal           @default(0) @db.Decimal(10, 2)
+
+  @@map("authorization_items")
+}
+
+enum PendingReason {
+  SEM_SALDO
+  SEM_CONTRATO
+}
+
+model PendingItem {
+  id                       Int           @id @default(autoincrement())
+  patientId                Int
+  patient                  Patient       @relation(fields: [patientId], references: [id])
+  procedureId              Int
+  procedure                Procedure     @relation(fields: [procedureId], references: [id])
+  qtd                      Int           @default(1)
+  motivo                   PendingReason
+  createdAt                DateTime      @default(now())
+  resolvedAt               DateTime?
+  resolvedAuthorizationId  Int?
+
+  @@index([resolvedAt])
+  @@map("pending_items")
+}
+
+// ─── Auditoria ───────────────────────────────────────────
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id])
+  acao      String
+  entidade  String
+  entityId  String?
+  payload   Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ─── SIGTAP / Tabela Unificada ───────────────────────────
+model SigtapCompetencia {
+  id           Int      @id @default(autoincrement())
+  competencia  String   @unique // "YYYYMM"
+  versao       String?
+  origem       String   @default("UPLOAD") // FTP | UPLOAD
+  importadoEm  DateTime @default(now())
+  importadoPor Int?
+  importer     User?    @relation(fields: [importadoPor], references: [id])
+
+  procedimentos    SigtapProcedimento[]
+  procCbos         SigtapProcCbo[]
+  procServicos     SigtapProcServico[]
+  procCids         SigtapProcCid[]
+  procAtributos    SigtapProcAtributo[]
+  procRegras       SigtapProcRegra[]
+  procHabilitacoes SigtapProcHabilitacao[]
+  procRegistros    SigtapProcRegistro[]
+
+  @@map("sigtap_competencias")
+}
+
+model SigtapProcedimento {
+  id                       Int               @id @default(autoincrement())
+  competenciaId            Int
+  competencia              SigtapCompetencia @relation(fields: [competenciaId], references: [id], onDelete: Cascade)
+  codigo                   String            @db.VarChar(10)
+  descricao                String            @db.VarChar(300)
+  complexidade             String?           @db.Char(1)
+  codigoFinanciamento      String?           @db.Char(2)
+  tpSexo                   String?           @db.Char(1)
+  qtMaximaExecucao         Int?
+  vlIdadeMinima            Int?
+  vlIdadeMaxima            Int?
+  exigeServico             Boolean           @default(false)
+  exigeCid                 Boolean           @default(false)
+  admiteContinuidade       Boolean           @default(false)
+  exigeDadosComplementares Boolean           @default(false)
+  exigeCpf                 Boolean           @default(false)
+  exigeCidCausasAssoc      Boolean           @default(false)
+  apacValidade2Comp        Boolean           @default(false)
+  programaMaisAcesso       Boolean           @default(false)
+  exigeTomografia          Boolean           @default(false)
+  exigeRessonancia         Boolean           @default(false)
+  verificaHabilitTerceiro  Boolean           @default(false)
+  exigeSecundarioCompativel Boolean          @default(false)
+  possuiRegra0011          Boolean           @default(false)
+
+  @@unique([competenciaId, codigo])
+  @@index([codigo])
+  @@map("sigtap_procedimentos")
+}
+
+model SigtapProcCbo {
+  id                 Int               @id @default(autoincrement())
+  competenciaId      Int
+  competencia        SigtapCompetencia @relation(fields: [competenciaId], references: [id], onDelete: Cascade)
+  codigoProcedimento String            @db.VarChar(10)
+  cbo                String            @db.VarChar(6)
+
+  @@unique([competenciaId, codigoProcedimento, cbo])
+  @@map("sigtap_proc_cbo")
+}
+
+model SigtapProcServico {
+  id                  Int               @id @default(autoincrement())
+  competenciaId       Int
+  competencia         SigtapCompetencia @relation(fields: [competenciaId], references: [id], onDelete: Cascade)
+  codigoProcedimento  String            @db.VarChar(10)
+  codigoServico       String            @db.VarChar(3)
+  codigoClassificacao String            @db.VarChar(3)
+
+  @@unique([competenciaId, codigoProcedimento, codigoServico, codigoClassificacao])
+  @@map("sigtap_proc_servico")
+}
+
+model SigtapProcCid {
+  id                 Int               @id @default(autoincrement())
+  competenciaId      Int
+  competencia        SigtapCompetencia @relation(fields: [competenciaId], references: [id], onDelete: Cascade)
+  codigoProcedimento String            @db.VarChar(10)
+  cid                String            @db.VarChar(4)
+  stPrincipal        String            @db.Char(1)
+
+  @@unique([competenciaId, codigoProcedimento, cid])
+  @@map("sigtap_proc_cid")
+}
+
+model SigtapProcAtributo {
+  id                 Int               @id @default(autoincrement())
+  competenciaId      Int
+  competencia        SigtapCompetencia @relation(fields: [competenciaId], references: [id], onDelete: Cascade)
+  codigoProcedimento String            @db.VarChar(10)
+  codigoAtributo     String            @db.VarChar(3)
+  descricaoAtributo  String?
+
+  @@unique([competenciaId, codigoProcedimento, codigoAtributo])
+  @@map("sigtap_proc_atributo")
+}
+
+model SigtapProcRegra {
+  id                 Int               @id @default(autoincrement())
+  competenciaId      Int
+  competencia        SigtapCompetencia @relation(fields: [competenciaId], references: [id], onDelete: Cascade)
+  codigoProcedimento String            @db.VarChar(10)
+  codigoRegra        String            @db.VarChar(4)
+  descricaoRegra     String?
+
+  @@unique([competenciaId, codigoProcedimento, codigoRegra])
+  @@map("sigtap_proc_regra")
+}
+
+model SigtapProcHabilitacao {
+  id                  Int               @id @default(autoincrement())
+  competenciaId       Int
+  competencia         SigtapCompetencia @relation(fields: [competenciaId], references: [id], onDelete: Cascade)
+  codigoProcedimento  String            @db.VarChar(10)
+  codigoHabilitacao   String            @db.VarChar(4)
+  descricaoHabilitacao String?
+
+  @@unique([competenciaId, codigoProcedimento, codigoHabilitacao])
+  @@map("sigtap_proc_habilitacao")
+}
+
+model SigtapProcRegistro {
+  id                 Int               @id @default(autoincrement())
+  competenciaId      Int
+  competencia        SigtapCompetencia @relation(fields: [competenciaId], references: [id], onDelete: Cascade)
+  codigoProcedimento String            @db.VarChar(10)
+  codigoRegistro     String            @db.VarChar(2)
+  descricaoRegistro  String?
+
+  @@unique([competenciaId, codigoProcedimento, codigoRegistro])
+  @@map("sigtap_proc_registro")
+}
+
+enum SigtapJobStatus {
+  PENDING
+  RUNNING
+  DONE
+  ERROR
+}
+
+model SigtapJob {
+  id          Int             @id @default(autoincrement())
+  tipo        String          // "FTP_DOWNLOAD" | "UPLOAD"
+  status      SigtapJobStatus @default(PENDING)
+  competencia String?
+  arquivo     String?
+  mensagem    String?
+  resumo      Json?
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime        @default(now())
+
+  @@map("sigtap_jobs")
+}

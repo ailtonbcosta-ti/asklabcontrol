@@ -1,0 +1,28 @@
+import { Router } from 'express';
+import { authRouter } from './modules/auth/auth.routes';
+import { usersRouter } from './modules/users/users.routes';
+import { patientsRouter } from './modules/patients/patients.routes';
+import { proceduresRouter } from './modules/procedures/procedures.routes';
+import { laboratoriesRouter } from './modules/laboratories/laboratories.routes';
+import { contractsRouter } from './modules/contracts/contracts.routes';
+import { authorizationsRouter } from './modules/authorizations/authorizations.routes';
+import { reportsRouter } from './modules/reports/reports.routes';
+import { configRouter } from './modules/config/config.routes';
+import { sigtapRouter } from './modules/sigtap/sigtap.routes';
+import { pecRouter } from './modules/pec/pec.routes';
+import { cepRouter } from './modules/cep/cep.routes';
+
+export const router = Router();
+
+router.use('/auth', authRouter);
+router.use('/users', usersRouter);
+router.use('/patients', patientsRouter);
+router.use('/procedures', proceduresRouter);
+router.use('/laboratories', laboratoriesRouter);
+router.use('/contracts', contractsRouter);
+router.use('/authorizations', authorizationsRouter);
+router.use('/reports', reportsRouter);
+router.use('/config', configRouter);
+router.use('/sigtap', sigtapRouter);
+router.use('/pec', pecRouter);
+router.use('/cep', cepRouter);
