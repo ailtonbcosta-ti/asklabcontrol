@@ -20,14 +20,15 @@ services:
     restart: unless-stopped
     depends_on:
       - postgres
-    env_file:
-      - .env
     environment:
       DATABASE_URL: postgresql://asklab:asklab@postgres:5432/asklab?schema=public
+      JWT_ACCESS_SECRET: "5GshjkoJV6kpC35yHXoE8Y3S22A9nd3tVboarTba/vU="
+      JWT_REFRESH_SECRET: "vUMhMDm3jhZ4eT/8MrG/UqimllT31Udfd8TYlszry/Y="
+      NODE_ENV: production
     volumes:
       - asklab_uploads:/data/uploads
     ports:
-      - "3000:3000"
+      - "3005:3005"
 
   frontend:
     build:
@@ -39,7 +40,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "8080:80"
+      - "8081:80"
 
 volumes:
   asklab_pg:
