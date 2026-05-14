@@ -2,6 +2,8 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    networks:
+      - asklab_net
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-asklab}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-asklab}
@@ -17,6 +19,8 @@ services:
   backend:
     image: ghcr.io/ailtonbcosta-ti/asklabcontrol-backend:latest
     restart: unless-stopped
+    networks:
+      - asklab_net
     depends_on:
       postgres:
         condition: service_healthy
@@ -34,10 +38,16 @@ services:
   frontend:
     image: ghcr.io/ailtonbcosta-ti/asklabcontrol-frontend:latest
     restart: unless-stopped
+    networks:
+      - asklab_net
     depends_on:
       - backend
     ports:
       - "${FRONTEND_PORT:-8080}:80"
+
+networks:
+  asklab_net:
+    driver: bridge
 
 volumes:
   asklab_pg:
