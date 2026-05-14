@@ -21,8 +21,9 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/package*.json ./
 COPY scripts ./scripts
-RUN chmod +x ./scripts/*.py
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./scripts/*.py ./entrypoint.sh
 RUN mkdir -p /data/uploads /tmp/sigtap
 EXPOSE 3000
 ENTRYPOINT ["/sbin/tini","--"]
-CMD ["sh","-c","for i in 1 2 3 4 5 6 7 8 9 10; do npx prisma db push --accept-data-loss --skip-generate && break; echo 'DB not ready, retry...'; sleep 3; done; node dist/seed.js || true; node dist/server.js"]
+CMD ["./entrypoint.sh"]
