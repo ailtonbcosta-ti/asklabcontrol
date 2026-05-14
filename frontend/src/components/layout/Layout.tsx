@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../stores/auth';
-import { Users, Settings as SettingsIcon, FileText, FilePlus, FileBarChart, ClipboardList, Building2, LogOut, Beaker, Stethoscope, Database } from 'lucide-react';
+import { Users, Settings as SettingsIcon, FileText, FilePlus, FileBarChart, ClipboardList, Building2, LogOut, Beaker, Stethoscope, Database, FlaskConical } from 'lucide-react';
 import { api } from '../../lib/api';
 
 const baseNav = [
@@ -11,6 +11,7 @@ const baseNav = [
   { to: '/contratos', label: 'Contratos', icon: ClipboardList },
   { to: '/laboratorios', label: 'Laboratórios', icon: Building2 },
   { to: '/procedimentos', label: 'Procedimentos', icon: Stethoscope },
+  { to: '/reagentes', label: 'Reagentes', icon: FlaskConical },
 ];
 
 export function Layout() {

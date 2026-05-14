@@ -446,3 +446,59 @@ model SigtapJob {
 
   @@map("sigtap_jobs")
 }
+
+// ─── Controle de Reagentes ────────────────────────────────
+model ReagentContract {
+  id           Int      @id @default(autoincrement())
+  cnpj         String
+  empresa      String
+  vigenciaIni  DateTime
+  vigenciaFim  DateTime
+  ativo        Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  items        ReagentContractItem[]
+  consumptions ReagentConsumption[]
+
+  @@map("reagent_contracts")
+}
+
+model ReagentContractItem {
+  id            Int             @id @default(autoincrement())
+  contractId    Int
+  contract      ReagentContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  nome          String
+  qtdLicitada   Float
+  valorLicitado Float
+
+  consumptionItems ReagentConsumptionItem[]
+
+  @@map("reagent_contract_items")
+}
+
+model ReagentConsumption {
+  id          Int             @id @default(autoincrement())
+  contractId  Int
+  contract    ReagentContract @relation(fields: [contractId], references: [id])
+  periodoIni  DateTime
+  periodoFim  DateTime
+  observacoes String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  items ReagentConsumptionItem[]
+
+  @@map("reagent_consumptions")
+}
+
+model ReagentConsumptionItem {
+  id            Int                 @id @default(autoincrement())
+  consumptionId Int
+  consumption   ReagentConsumption  @relation(fields: [consumptionId], references: [id], onDelete: Cascade)
+  itemId        Int
+  item          ReagentContractItem @relation(fields: [itemId], references: [id])
+  qtdConsumida  Float
+
+  @@map("reagent_consumption_items")
+}

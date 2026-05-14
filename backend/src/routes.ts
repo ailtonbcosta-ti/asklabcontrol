@@ -11,6 +11,7 @@ import { configRouter } from './modules/config/config.routes';
 import { sigtapRouter } from './modules/sigtap/sigtap.routes';
 import { pecRouter } from './modules/pec/pec.routes';
 import { cepRouter } from './modules/cep/cep.routes';
+import { reagentsRouter } from './modules/reagents/reagents.routes';
 
 export const router = Router();
 
@@ -26,3 +27,4 @@ router.use('/config', configRouter);
 router.use('/sigtap', sigtapRouter);
 router.use('/pec', pecRouter);
 router.use('/cep', cepRouter);
+router.use('/reagents', reagentsRouter);

@@ -13,6 +13,7 @@ import { ContractDetail } from './pages/Contracts/ContractDetail';
 import { LaboratoriesList } from './pages/Contracts/LaboratoriesList';
 import { ProceduresList } from './pages/Contracts/ProceduresList';
 import { ReportsHome } from './pages/Reports/ReportsHome';
+import { ReagentesHome } from './pages/Reagentes/ReagentesHome';
 import { UsersList } from './pages/Users/UsersList';
 import { Settings } from './pages/Settings/Settings';
 import { SigtapManager } from './pages/Settings/SigtapManager';
@@ -42,6 +43,7 @@ export function App() {
         <Route path="/laboratorios" element={<LaboratoriesList />} />
         <Route path="/procedimentos" element={<ProceduresList />} />
         <Route path="/relatorios" element={<Guard roles={['ADMIN', 'GESTOR']}><ReportsHome /></Guard>} />
+        <Route path="/reagentes" element={<ReagentesHome />} />
         <Route path="/usuarios" element={<Guard roles={['ADMIN']}><UsersList /></Guard>} />
         <Route path="/configuracoes" element={<Guard roles={['ADMIN']}><Settings /></Guard>} />
         <Route path="/configuracoes/sigtap" element={<Guard roles={['ADMIN']}><SigtapManager /></Guard>} />
