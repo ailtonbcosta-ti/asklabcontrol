@@ -1,44 +1,42 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: asklab
-      POSTGRES_PASSWORD: asklab
-      POSTGRES_DB: asklab
+      POSTGRES_USER: ${POSTGRES_USER:-asklab}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-asklab}
+      POSTGRES_DB: ${POSTGRES_DB:-asklab}
     volumes:
       - asklab_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-asklab}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: ghcr.io/ailtonbcosta-ti/asklabcontrol-backend:latest
     restart: unless-stopped
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://asklab:asklab@postgres:5432/asklab?schema=public
-      JWT_ACCESS_SECRET: "5GshjkoJV6kpC35yHXoE8Y3S22A9nd3tVboarTba/vU="
-      JWT_REFRESH_SECRET: "vUMhMDm3jhZ4eT/8MrG/UqimllT31Udfd8TYlszry/Y="
+      DATABASE_URL: postgresql://${POSTGRES_USER:-asklab}:${POSTGRES_PASSWORD:-asklab}@postgres:5432/${POSTGRES_DB:-asklab}?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       NODE_ENV: production
     volumes:
       - asklab_uploads:/data/uploads
     ports:
-      - "3001:3000"
+      - "${BACKEND_PORT:-3001}:3000"
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        VITE_API_URL: /api
+    image: ghcr.io/ailtonbcosta-ti/asklabcontrol-frontend:latest
     restart: unless-stopped
     depends_on:
       - backend
     ports:
-      - "8081:80"
+      - "${FRONTEND_PORT:-8080}:80"
 
 volumes:
   asklab_pg:
