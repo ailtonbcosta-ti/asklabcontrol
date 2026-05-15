@@ -6,7 +6,11 @@ import { api } from '../../lib/api';
 import { maskCnpj, onlyDigits } from '../../lib/cnpj';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
-const fmtDate = (d: Date | string) => new Date(d).toLocaleDateString('pt-BR');
+const fmtDate = (d: Date | string) => {
+  const iso = typeof d === 'string' ? d : d.toISOString();
+  const [y, m, day] = iso.slice(0, 10).split('-');
+  return `${day}/${m}/${y}`;
+};
 const fmtMoney = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtNum = (v: number) =>
@@ -232,12 +236,12 @@ function CadastroContratos() {
                         </td>
                         <td>
                           <input type="number" min={0} className="input text-xs py-1 w-full"
-                            value={it.qtdLicitada || ''}
+                            value={it.qtdLicitada}
                             onChange={(e) => updateItemRow(idx, 'qtdLicitada', Number(e.target.value))} />
                         </td>
                         <td>
                           <input type="number" min={0} step="0.01" className="input text-xs py-1 w-full"
-                            value={it.valorLicitado || ''}
+                            value={it.valorLicitado}
                             onChange={(e) => updateItemRow(idx, 'valorLicitado', Number(e.target.value))} />
                         </td>
                         <td>
@@ -567,7 +571,7 @@ ${obs ? `<p style="font-size:8pt;color:#555;margin-bottom:8px">Obs.: ${esc(obs)}
                             <input
                               type="number" min={0} step="0.01"
                               className="input text-sm py-1 w-full"
-                              value={qtd || ''}
+                              value={qtd}
                               onChange={(e) => setQtds({ ...qtds, [it.id]: Number(e.target.value) })}
                             />
                           </td>
@@ -844,7 +848,7 @@ ${rec.observacoes ? `<p style="font-size:8pt;color:#555;margin-bottom:8px">Obs.:
                           <input
                             type="number" min={0} step="0.01"
                             className="input text-sm py-1 w-full"
-                            value={qtd || ''}
+                            value={qtd}
                             onChange={(e) =>
                               setEditQtds({ ...editQtds, [it.id]: Number(e.target.value) })
                             }
