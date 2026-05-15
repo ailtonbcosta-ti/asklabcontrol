@@ -33,7 +33,7 @@ services:
     volumes:
       - asklab_uploads:/data/uploads
     ports:
-      - "3001:3001"
+      - "3002:3001"
 
   frontend:
     image: ghcr.io/ailtonbcosta-ti/asklabcontrol-frontend:latest
@@ -42,10 +42,8 @@ services:
       - asklab_net
     depends_on:
       - backend
-    extra_hosts:
-      - "backend:host-gateway"
     ports:
-      - "${FRONTEND_PORT:-8080}:80"
+      - "${FRONTEND_PORT:-8082}:80"
 
 networks:
   asklab_net:
