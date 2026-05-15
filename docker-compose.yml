@@ -22,8 +22,8 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-asklab}:${POSTGRES_PASSWORD:-asklab}@postgres:5432/${POSTGRES_DB:-asklab}?schema=public
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-asklab_access_secret_change_me_32x}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-asklab_refresh_secret_change_me_32}
       NODE_ENV: production
       PORT: 3001
     volumes:
