@@ -81,7 +81,30 @@ const cpSchema = z.object({
 contractsRouter.post('/:id/procedures', requireRole(Role.ADMIN, Role.GESTOR), ah(async (req, res) => {
   const contractId = Number(req.params.id);
   const data = cpSchema.parse(req.body);
-  const cp = await prisma.contractProcedure.create({ data: { ...data, contractId } });
+
+  // Verifica se o procedimento já está cadastrado no contrato (ativo ou inativo)
+  const existing = await prisma.contractProcedure.findFirst({
+    where: {
+      contractId,
+      procedureId: data.procedureId
+    }
+  });
+
+  let cp;
+  if (existing) {
+    // Se existir, atualiza suas propriedades e marca como ativo novamente
+    cp = await prisma.contractProcedure.update({
+      where: { id: existing.id },
+      data: {
+        qtdMensal: data.qtdMensal,
+        valorUnitario: data.valorUnitario,
+        ativo: true
+      }
+    });
+  } else {
+    // Se não existir, cria um novo registro
+    cp = await prisma.contractProcedure.create({ data: { ...data, contractId } });
+  }
 
   // cria saldo zerado para o mês atual já
   const now = new Date();
