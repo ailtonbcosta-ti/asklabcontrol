@@ -75,6 +75,7 @@ const cpSchema = z.object({
   procedureId: z.number().int().positive(),
   qtdMensal: z.number().int().positive(),
   valorUnitario: z.number().nonnegative().optional().default(0),
+  ativo: z.boolean().optional(),
 });
 
 contractsRouter.post('/:id/procedures', requireRole(Role.ADMIN, Role.GESTOR), ah(async (req, res) => {

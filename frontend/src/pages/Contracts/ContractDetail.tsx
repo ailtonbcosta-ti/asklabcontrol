@@ -11,6 +11,7 @@ export function ContractDetail() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ['contract', id], queryFn: () => api.get(`/contracts/${id}`).then((r) => r.data) });
   const [novo, setNovo] = useState<any | null>(null);
+  const [editando, setEditando] = useState<any | null>(null);
   const [busca, setBusca] = useState('');
   const [opts, setOpts] = useState<SigtapItem[]>([]);
   const [searching, setSearching] = useState(false);
@@ -59,6 +60,34 @@ export function ContractDetail() {
     qc.invalidateQueries({ queryKey: ['contract', id] });
   }
 
+  async function salvarEdicao() {
+    if (!editando.qtdMensal || editando.qtdMensal < 1) return toast.error('Informe a quantidade mensal');
+    try {
+      await api.patch(`/contracts/${id}/procedures/${editando.id}`, {
+        procedureId: editando.procedureId,
+        qtdMensal: editando.qtdMensal,
+        valorUnitario: editando.valorUnitario || 0,
+        ativo: editando.ativo,
+      });
+      toast.success('Procedimento atualizado');
+      setEditando(null);
+      qc.invalidateQueries({ queryKey: ['contract', id] });
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || 'Falha ao atualizar procedimento');
+    }
+  }
+
+  async function excluir(cpId: number) {
+    if (!window.confirm('Tem certeza que deseja desativar/remover este procedimento do contrato?')) return;
+    try {
+      await api.delete(`/contracts/${id}/procedures/${cpId}`);
+      toast.success('Procedimento desativado/removido');
+      qc.invalidateQueries({ queryKey: ['contract', id] });
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || 'Falha ao remover procedimento');
+    }
+  }
+
   if (!data) return <div>Carregando...</div>;
 
   return (
@@ -72,7 +101,7 @@ export function ContractDetail() {
           <button className="btn-primary" onClick={() => { setNovo({ procedureId: 0, qtdTotal: 0, qtdMensal: 0, valorUnitario: 0 }); setBusca(''); setOpts([]); }}>+ Adicionar</button>
         </div>
         <table className="table">
-          <thead><tr><th>Código</th><th>Descrição</th><th>Qtd/mês</th><th>Valor unit.</th><th>Ativo</th></tr></thead>
+          <thead><tr><th>Código</th><th>Descrição</th><th>Qtd/mês</th><th>Valor unit.</th><th>Ativo</th><th className="text-right">Ações</th></tr></thead>
           <tbody>
             {data.procedures.map((cp: any) => (
               <tr key={cp.id}>
@@ -81,6 +110,30 @@ export function ContractDetail() {
                 <td>{cp.qtdMensal}</td>
                 <td>R$ {Number(cp.valorUnitario).toFixed(2)}</td>
                 <td>{cp.ativo ? 'Sim' : 'Não'}</td>
+                <td className="text-right">
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      className="btn-outline text-xs px-2 py-1"
+                      onClick={() => setEditando({
+                        id: cp.id,
+                        procedureId: cp.procedureId,
+                        _label: `${cp.procedure.codigo} · ${cp.procedure.descricao}`,
+                        qtdTotal: cp.qtdMensal * 12,
+                        qtdMensal: cp.qtdMensal,
+                        valorUnitario: Number(cp.valorUnitario),
+                        ativo: cp.ativo
+                      })}
+                    >
+                      Editar
+                    </button>
+                    <button
+                      className="btn-outline text-xs px-2 py-1 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                      onClick={() => excluir(cp.id)}
+                    >
+                      Excluir
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -173,6 +226,86 @@ export function ContractDetail() {
             <div className="flex gap-2 justify-end">
               <button className="btn-outline" onClick={() => setNovo(null)}>Cancelar</button>
               <button className="btn-primary" onClick={salvar}>Salvar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editando && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="card w-full max-w-lg space-y-3">
+            <h2 className="font-semibold">Editar procedimento</h2>
+
+            <div className="text-xs bg-slate-50 border border-slate-200 text-slate-700 rounded px-2 py-1">
+              Procedimento: <strong>{editando._label}</strong>
+            </div>
+
+            <div>
+              <label className="label">Quantidade total</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                value={editando.qtdTotal || ''}
+                onChange={(e) => {
+                  const valStr = e.target.value;
+                  if (valStr === '') {
+                    setEditando({ ...editando, qtdTotal: '', qtdMensal: '' });
+                  } else {
+                    const total = Number(valStr);
+                    const mensal = total > 0 ? Math.max(1, Math.floor(total / 12)) : 0;
+                    setEditando({ ...editando, qtdTotal: total, qtdMensal: mensal });
+                  }
+                }}
+              />
+            </div>
+
+            <div>
+              <label className="label">Quantidade mensal</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                value={editando.qtdMensal || ''}
+                onChange={(e) => {
+                  const valStr = e.target.value;
+                  if (valStr === '') {
+                    setEditando({ ...editando, qtdMensal: '' });
+                  } else {
+                    setEditando({ ...editando, qtdMensal: Number(valStr) });
+                  }
+                }}
+              />
+            </div>
+
+            <div>
+              <label className="label">Valor unitário (R$)</label>
+              <input
+                className="input"
+                type="number"
+                step="0.01"
+                min={0}
+                value={editando.valorUnitario}
+                onChange={(e) => setEditando({ ...editando, valorUnitario: Number(e.target.value) })}
+              />
+            </div>
+
+            <div className="flex items-center gap-2 py-1">
+              <input
+                id="edit-ativo"
+                type="checkbox"
+                checked={editando.ativo}
+                onChange={(e) => setEditando({ ...editando, ativo: e.target.checked })}
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              />
+              <label htmlFor="edit-ativo" className="text-sm font-medium text-slate-700 select-none">
+                Procedimento ativo no contrato
+              </label>
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <button className="btn-outline" onClick={() => setEditando(null)}>Cancelar</button>
+              <button className="btn-primary" onClick={salvarEdicao}>Salvar</button>
             </div>
           </div>
         </div>
