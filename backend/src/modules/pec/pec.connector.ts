@@ -15,33 +15,38 @@ function makeSignature(c: { host: string; porta: number; database: string; usuar
 }
 
 async function getPool(): Promise<Pool | null> {
-  const cfg = await prisma.pecConnection.findUnique({ where: { id: 1 } });
-  if (!cfg || !cfg.ativo || !cfg.host || !cfg.database || !cfg.usuario || !cfg.senhaCriptografada) {
+  try {
+    const cfg = await prisma.pecConnection.findUnique({ where: { id: 1 } });
+    if (!cfg || !cfg.ativo || !cfg.host || !cfg.database || !cfg.usuario || !cfg.senhaCriptografada) {
+      if (cached) {
+        try { await cached.pool.end(); } catch { /* ignore */ }
+        cached = null;
+      }
+      return null;
+    }
+    const sig = makeSignature(cfg as any);
+    if (cached && cached.signature === sig) return cached.pool;
     if (cached) {
       try { await cached.pool.end(); } catch { /* ignore */ }
-      cached = null;
     }
+    const pool = new Pool({
+      host: cfg.host!,
+      port: cfg.porta,
+      database: cfg.database!,
+      user: cfg.usuario!,
+      password: decrypt(cfg.senhaCriptografada!),
+      ssl: cfg.sslMode !== 'disable' ? { rejectUnauthorized: false } : false,
+      statement_timeout: 60_000,
+      connectionTimeoutMillis: 15_000,
+      max: 5,
+    });
+    pool.on('error', (e) => logger.warn({ err: e.message }, 'PEC pool error'));
+    cached = { pool, signature: sig };
+    return pool;
+  } catch (e: any) {
+    logger.error({ err: e.message }, 'Failed to initialize PEC pool');
     return null;
   }
-  const sig = makeSignature(cfg as any);
-  if (cached && cached.signature === sig) return cached.pool;
-  if (cached) {
-    try { await cached.pool.end(); } catch { /* ignore */ }
-  }
-  const pool = new Pool({
-    host: cfg.host!,
-    port: cfg.porta,
-    database: cfg.database!,
-    user: cfg.usuario!,
-    password: decrypt(cfg.senhaCriptografada!),
-    ssl: cfg.sslMode !== 'disable' ? { rejectUnauthorized: false } : false,
-    statement_timeout: 60_000,
-    connectionTimeoutMillis: 15_000,
-    max: 5,
-  });
-  pool.on('error', (e) => logger.warn({ err: e.message }, 'PEC pool error'));
-  cached = { pool, signature: sig };
-  return pool;
 }
 
 export function invalidatePecPool() {
