@@ -69,7 +69,7 @@ export function ContractDetail() {
       <div className="card">
         <div className="flex justify-between items-center mb-2">
           <h2 className="font-semibold">Procedimentos contratados (cota mensal)</h2>
-          <button className="btn-primary" onClick={() => { setNovo({ procedureId: 0, qtdMensal: 0, valorUnitario: 0 }); setBusca(''); setOpts([]); }}>+ Adicionar</button>
+          <button className="btn-primary" onClick={() => { setNovo({ procedureId: 0, qtdTotal: 0, qtdMensal: 0, valorUnitario: 0 }); setBusca(''); setOpts([]); }}>+ Adicionar</button>
         </div>
         <table className="table">
           <thead><tr><th>Código</th><th>Descrição</th><th>Qtd/mês</th><th>Valor unit.</th><th>Ativo</th></tr></thead>
@@ -129,8 +129,41 @@ export function ContractDetail() {
             )}
 
             <div>
+              <label className="label">Quantidade total</label>
+              <input
+                className="input"
+                type="number"
+                min={1}
+                value={novo.qtdTotal || ''}
+                onChange={(e) => {
+                  const valStr = e.target.value;
+                  if (valStr === '') {
+                    setNovo({ ...novo, qtdTotal: '', qtdMensal: '' });
+                  } else {
+                    const total = Number(valStr);
+                    const mensal = total > 0 ? Math.max(1, Math.floor(total / 12)) : 0;
+                    setNovo({ ...novo, qtdTotal: total, qtdMensal: mensal });
+                  }
+                }}
+              />
+            </div>
+
+            <div>
               <label className="label">Quantidade mensal</label>
-              <input className="input" type="number" min={1} value={novo.qtdMensal || ''} onChange={(e) => setNovo({ ...novo, qtdMensal: Number(e.target.value) })} />
+              <input
+                className="input"
+                type="number"
+                min={1}
+                value={novo.qtdMensal || ''}
+                onChange={(e) => {
+                  const valStr = e.target.value;
+                  if (valStr === '') {
+                    setNovo({ ...novo, qtdMensal: '' });
+                  } else {
+                    setNovo({ ...novo, qtdMensal: Number(valStr) });
+                  }
+                }}
+              />
             </div>
             <div>
               <label className="label">Valor unitário (R$)</label>
