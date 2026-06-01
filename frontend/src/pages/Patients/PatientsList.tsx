@@ -4,6 +4,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { Pencil, Trash2 } from 'lucide-react';
 import { api } from '../../lib/api';
+import { formatarDataUTC } from '../../lib/date';
 
 export function PatientsList() {
   const qc = useQueryClient();
@@ -45,7 +46,7 @@ export function PatientsList() {
                 <td>{p.nome}</td>
                 <td>{p.cpf || '—'}</td>
                 <td>{p.cns || '—'}</td>
-                <td>{p.dataNascimento ? new Date(p.dataNascimento).toLocaleDateString('pt-BR') : '—'}</td>
+                <td>{formatarDataUTC(p.dataNascimento) || '—'}</td>
                 <td className="whitespace-nowrap">
                   <button
                     title="Editar"

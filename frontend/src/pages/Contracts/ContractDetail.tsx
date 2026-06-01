@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
+import { formatarDataUTC } from '../../lib/date';
 
 interface SigtapItem { codigo: string; descricao: string; complexidade?: string | null; tpSexo?: string | null; }
 
@@ -94,7 +95,7 @@ export function ContractDetail() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold">{data.numero} · {data.laboratory.razaoSocial}</h1>
-      <div className="text-sm text-slate-500">Vigência: {new Date(data.vigenciaInicio).toLocaleDateString('pt-BR')} → {new Date(data.vigenciaFim).toLocaleDateString('pt-BR')}</div>
+      <div className="text-sm text-slate-500">Vigência: {formatarDataUTC(data.vigenciaInicio)} → {formatarDataUTC(data.vigenciaFim)}</div>
 
       <div className="card">
         <div className="flex justify-between items-center mb-2">

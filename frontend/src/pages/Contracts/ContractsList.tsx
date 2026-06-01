@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { Pencil, Trash2, FolderOpen, FileUp } from 'lucide-react';
 import { ContractPdfImport } from './ContractPdfImport';
 import { api } from '../../lib/api';
+import { formatarDataUTC } from '../../lib/date';
 
 export function ContractsList() {
   const qc = useQueryClient();
@@ -56,7 +57,7 @@ export function ContractsList() {
               <tr key={c.id}>
                 <td>{c.numero}</td>
                 <td>{c.laboratory?.razaoSocial}</td>
-                <td>{new Date(c.vigenciaInicio).toLocaleDateString('pt-BR')} → {new Date(c.vigenciaFim).toLocaleDateString('pt-BR')}</td>
+                <td>{formatarDataUTC(c.vigenciaInicio)} → {formatarDataUTC(c.vigenciaFim)}</td>
                 <td>{c._count?.procedures}</td>
                 <td className="whitespace-nowrap">
                   <button
