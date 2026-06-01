@@ -12,6 +12,7 @@ export function ContractDetail() {
   const { data } = useQuery({ queryKey: ['contract', id], queryFn: () => api.get(`/contracts/${id}`).then((r) => r.data) });
   const [novo, setNovo] = useState<any | null>(null);
   const [editando, setEditando] = useState<any | null>(null);
+  const [mostrarInativos, setMostrarInativos] = useState(false);
   const [busca, setBusca] = useState('');
   const [opts, setOpts] = useState<SigtapItem[]>([]);
   const [searching, setSearching] = useState(false);
@@ -97,13 +98,26 @@ export function ContractDetail() {
 
       <div className="card">
         <div className="flex justify-between items-center mb-2">
-          <h2 className="font-semibold">Procedimentos contratados (cota mensal)</h2>
+          <div className="flex items-center gap-4">
+            <h2 className="font-semibold">Procedimentos contratados (cota mensal)</h2>
+            <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={mostrarInativos}
+                onChange={(e) => setMostrarInativos(e.target.checked)}
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              />
+              Mostrar inativos
+            </label>
+          </div>
           <button className="btn-primary" onClick={() => { setNovo({ procedureId: 0, qtdTotal: 0, qtdMensal: 0, valorUnitario: 0 }); setBusca(''); setOpts([]); }}>+ Adicionar</button>
         </div>
         <table className="table">
           <thead><tr><th>Código</th><th>Descrição</th><th>Qtd/mês</th><th>Valor unit.</th><th>Ativo</th><th className="text-right">Ações</th></tr></thead>
           <tbody>
-            {data.procedures.map((cp: any) => (
+            {data.procedures
+              .filter((cp: any) => mostrarInativos || cp.ativo)
+              .map((cp: any) => (
               <tr key={cp.id}>
                 <td className="font-mono">{cp.procedure.codigo}</td>
                 <td>{cp.procedure.descricao}</td>

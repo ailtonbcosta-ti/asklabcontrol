@@ -99,8 +99,14 @@ contractsRouter.patch('/:id/procedures/:cpId', requireRole(Role.ADMIN, Role.GEST
 }));
 
 contractsRouter.delete('/:id/procedures/:cpId', requireRole(Role.ADMIN, Role.GESTOR), ah(async (req, res) => {
-  await prisma.contractProcedure.update({ where: { id: Number(req.params.cpId) }, data: { ativo: false } });
-  res.json({ ok: true });
+  const cpId = Number(req.params.cpId);
+  try {
+    await prisma.contractProcedure.delete({ where: { id: cpId } });
+    res.json({ ok: true, deleted: true });
+  } catch (err) {
+    await prisma.contractProcedure.update({ where: { id: cpId }, data: { ativo: false } });
+    res.json({ ok: true, deleted: false });
+  }
 }));
 
 // ─── Importação por PDF ─────────────────────────────────
