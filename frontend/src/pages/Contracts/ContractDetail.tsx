@@ -1,6 +1,6 @@
+import React, { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
-import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { formatarDataUTC } from '../../lib/date';
@@ -61,10 +61,10 @@ export function ContractDetail() {
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setActiveOptIndex((prev) => (prev < opts.length - 1 ? prev + 1 : prev));
+      setActiveOptIndex((prev: number) => (prev < opts.length - 1 ? prev + 1 : prev));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setActiveOptIndex((prev) => (prev > 0 ? prev - 1 : 0));
+      setActiveOptIndex((prev: number) => (prev > 0 ? prev - 1 : 0));
     } else if (e.key === 'Enter') {
       if (activeOptIndex >= 0 && activeOptIndex < opts.length) {
         e.preventDefault();
@@ -201,7 +201,7 @@ export function ContractDetail() {
       {novo && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
           <form
-            onSubmit={(e) => {
+            onSubmit={(e: React.FormEvent) => {
               e.preventDefault();
               salvar();
             }}
@@ -225,7 +225,7 @@ export function ContractDetail() {
                   ref={containerRef}
                   className="border border-slate-200 rounded mt-1 max-h-56 overflow-y-auto bg-white shadow-sm"
                 >
-                  {opts.map((s, idx) => (
+                  {opts.map((s: SigtapItem, idx: number) => (
                     <button
                       key={s.codigo}
                       type="button"
@@ -307,7 +307,7 @@ export function ContractDetail() {
       {editando && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
           <form
-            onSubmit={(e) => {
+            onSubmit={(e: React.FormEvent) => {
               e.preventDefault();
               salvarEdicao();
             }}
