@@ -20,6 +20,8 @@ export function ContractDetail() {
   const debounceRef = useRef<number | null>(null);
   const [activeOptIndex, setActiveOptIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const buscaInputRef = useRef<HTMLInputElement | null>(null);
+  const qtdTotalInputRef = useRef<HTMLInputElement | null>(null);
 
   // autocomplete dinâmico na tabela SIGTAP (debounced)
   useEffect(() => {
@@ -87,6 +89,9 @@ export function ContractDetail() {
       setNovo({ ...(novo || {}), procedureId: r.data.id, _label: `${r.data.codigo} · ${r.data.descricao}` });
       setOpts([]);
       setBusca('');
+      setTimeout(() => {
+        qtdTotalInputRef.current?.focus();
+      }, 50);
     } catch (e: any) {
       toast.error(e.response?.data?.error || 'Falha ao vincular procedimento');
     }
@@ -95,14 +100,24 @@ export function ContractDetail() {
   async function salvar() {
     if (!novo?.procedureId) return toast.error('Selecione um procedimento da tabela SIGTAP');
     if (!novo.qtdMensal || novo.qtdMensal < 1) return toast.error('Informe a quantidade mensal');
-    await api.post(`/contracts/${id}/procedures`, {
-      procedureId: novo.procedureId,
-      qtdMensal: novo.qtdMensal,
-      valorUnitario: novo.valorUnitario || 0,
-    });
-    toast.success('Procedimento adicionado');
-    setNovo(null);
-    qc.invalidateQueries({ queryKey: ['contract', id] });
+    try {
+      await api.post(`/contracts/${id}/procedures`, {
+        procedureId: novo.procedureId,
+        qtdMensal: novo.qtdMensal,
+        valorUnitario: novo.valorUnitario || 0,
+      });
+      toast.success('Procedimento adicionado');
+      setNovo({ procedureId: 0, qtdTotal: 0, qtdMensal: 0, valorUnitario: 0 });
+      setBusca('');
+      setOpts([]);
+      setActiveOptIndex(-1);
+      qc.invalidateQueries({ queryKey: ['contract', id] });
+      setTimeout(() => {
+        buscaInputRef.current?.focus();
+      }, 50);
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || 'Falha ao adicionar procedimento');
+    }
   }
 
   async function salvarEdicao() {
@@ -212,6 +227,7 @@ export function ContractDetail() {
             <div>
               <label className="label">Buscar procedimento (SIGTAP)</label>
               <input
+                ref={buscaInputRef}
                 className="input"
                 placeholder="digite código ou descrição (mín. 3 caracteres)"
                 value={busca}
@@ -257,6 +273,7 @@ export function ContractDetail() {
             <div>
               <label className="label">Quantidade total</label>
               <input
+                ref={qtdTotalInputRef}
                 className="input"
                 type="number"
                 min={1}
