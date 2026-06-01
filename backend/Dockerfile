@@ -15,7 +15,7 @@ RUN npx prisma generate && npm run build
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-RUN apk add --no-cache openssl tini poppler-utils tesseract-ocr tesseract-ocr-data-por python3
+RUN apk add --no-cache openssl tini poppler-utils tesseract-ocr tesseract-ocr-data-por python3 tzdata
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma

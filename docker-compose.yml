@@ -6,6 +6,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-asklab}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-asklab}
       POSTGRES_DB: ${POSTGRES_DB:-asklab}
+      TZ: America/Recife
     volumes:
       - asklab_pg:/var/lib/postgresql/data
     healthcheck:
@@ -26,6 +27,7 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-asklab_refresh_secret_change_me_32}
       NODE_ENV: production
       PORT: 3001
+      TZ: America/Recife
     volumes:
       - asklab_uploads:/data/uploads
     ports:
@@ -36,6 +38,8 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+    environment:
+      TZ: America/Recife
     ports:
       - "${FRONTEND_PORT:-8082}:80"
 
