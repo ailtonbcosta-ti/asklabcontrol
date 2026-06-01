@@ -18,21 +18,64 @@ export function ContractDetail() {
   const [opts, setOpts] = useState<SigtapItem[]>([]);
   const [searching, setSearching] = useState(false);
   const debounceRef = useRef<number | null>(null);
+  const [activeOptIndex, setActiveOptIndex] = useState(-1);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   // autocomplete dinâmico na tabela SIGTAP (debounced)
   useEffect(() => {
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    if (busca.trim().length < 3) { setOpts([]); return; }
+    if (busca.trim().length < 3) { setOpts([]); setActiveOptIndex(-1); return; }
     setSearching(true);
     debounceRef.current = window.setTimeout(async () => {
       try {
         const r = await api.get('/sigtap/procedimentos', { params: { q: busca.trim() } });
         setOpts(r.data);
+        setActiveOptIndex(-1);
       } catch { setOpts([]); }
       finally { setSearching(false); }
     }, 300);
     return () => { if (debounceRef.current) window.clearTimeout(debounceRef.current); };
   }, [busca]);
+
+  useEffect(() => {
+    if (activeOptIndex >= 0 && containerRef.current) {
+      const container = containerRef.current;
+      const activeEl = container.children[activeOptIndex] as HTMLElement;
+      if (activeEl) {
+        const containerTop = container.scrollTop;
+        const containerBottom = containerTop + container.clientHeight;
+        const elemTop = activeEl.offsetTop;
+        const elemBottom = elemTop + activeEl.offsetHeight;
+
+        if (elemTop < containerTop) {
+          container.scrollTop = elemTop;
+        } else if (elemBottom > containerBottom) {
+          container.scrollTop = elemBottom - container.clientHeight;
+        }
+      }
+    }
+  }, [activeOptIndex]);
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (opts.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveOptIndex((prev) => (prev < opts.length - 1 ? prev + 1 : prev));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveOptIndex((prev) => (prev > 0 ? prev - 1 : 0));
+    } else if (e.key === 'Enter') {
+      if (activeOptIndex >= 0 && activeOptIndex < opts.length) {
+        e.preventDefault();
+        selecionar(opts[activeOptIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setOpts([]);
+      setActiveOptIndex(-1);
+    }
+  };
 
   async function selecionar(s: SigtapItem) {
     try {
@@ -157,7 +200,13 @@ export function ContractDetail() {
 
       {novo && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="card w-full max-w-lg space-y-3">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              salvar();
+            }}
+            className="card w-full max-w-lg space-y-3"
+          >
             <h2 className="font-semibold">Adicionar procedimento</h2>
 
             <div>
@@ -166,20 +215,29 @@ export function ContractDetail() {
                 className="input"
                 placeholder="digite código ou descrição (mín. 3 caracteres)"
                 value={busca}
-                onChange={(e) => setBusca(e.target.value)}
+                onChange={(e) => { setBusca(e.target.value); setActiveOptIndex(-1); }}
+                onKeyDown={handleSearchKeyDown}
                 autoFocus
               />
               {searching && <div className="text-xs text-slate-500 mt-1">buscando…</div>}
               {opts.length > 0 && (
-                <div className="border border-slate-200 rounded mt-1 max-h-56 overflow-y-auto bg-white shadow-sm">
-                  {opts.map((s) => (
+                <div
+                  ref={containerRef}
+                  className="border border-slate-200 rounded mt-1 max-h-56 overflow-y-auto bg-white shadow-sm"
+                >
+                  {opts.map((s, idx) => (
                     <button
                       key={s.codigo}
                       type="button"
-                      onClick={() => selecionar(s)}
-                      className="block w-full text-left px-2 py-1 text-xs hover:bg-slate-100 border-b border-slate-100 last:border-0"
+                      onClick={() => { selecionar(s); setActiveOptIndex(-1); }}
+                      onMouseEnter={() => setActiveOptIndex(idx)}
+                      className={`block w-full text-left px-2 py-1.5 text-xs border-b border-slate-100 last:border-0 transition-colors ${
+                        idx === activeOptIndex
+                          ? 'bg-blue-50 text-blue-900 font-medium'
+                          : 'hover:bg-slate-50 text-slate-700'
+                      }`}
                     >
-                      <span className="font-mono text-slate-700">{s.codigo}</span> · {s.descricao}
+                      <span className="font-mono text-slate-800 font-semibold">{s.codigo}</span> · {s.descricao}
                       {s.tpSexo && <span className="ml-2 text-[10px] bg-slate-100 px-1 rounded">{s.tpSexo}</span>}
                     </button>
                   ))}
@@ -239,16 +297,22 @@ export function ContractDetail() {
             </div>
 
             <div className="flex gap-2 justify-end">
-              <button className="btn-outline" onClick={() => setNovo(null)}>Cancelar</button>
-              <button className="btn-primary" onClick={salvar}>Salvar</button>
+              <button type="button" className="btn-outline" onClick={() => setNovo(null)}>Cancelar</button>
+              <button type="submit" className="btn-primary">Salvar</button>
             </div>
-          </div>
+          </form>
         </div>
       )}
 
       {editando && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="card w-full max-w-lg space-y-3">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              salvarEdicao();
+            }}
+            className="card w-full max-w-lg space-y-3"
+          >
             <h2 className="font-semibold">Editar procedimento</h2>
 
             <div className="text-xs bg-slate-50 border border-slate-200 text-slate-700 rounded px-2 py-1">
@@ -319,10 +383,10 @@ export function ContractDetail() {
             </div>
 
             <div className="flex gap-2 justify-end">
-              <button className="btn-outline" onClick={() => setEditando(null)}>Cancelar</button>
-              <button className="btn-primary" onClick={salvarEdicao}>Salvar</button>
+              <button type="button" className="btn-outline" onClick={() => setEditando(null)}>Cancelar</button>
+              <button type="submit" className="btn-primary">Salvar</button>
             </div>
-          </div>
+          </form>
         </div>
       )}
     </div>
