@@ -71,7 +71,11 @@ pecRouter.post(
     if (!senha) {
       const cfg = await prisma.pecConnection.findUnique({ where: { id: 1 } });
       if (!cfg?.senhaCriptografada) return res.status(400).json({ ok: false, mensagem: 'Senha não informada e nenhuma salva' });
-      senha = decrypt(cfg.senhaCriptografada);
+      try {
+        senha = decrypt(cfg.senhaCriptografada);
+      } catch (err) {
+        return res.status(400).json({ ok: false, mensagem: 'A senha salva é inválida ou a chave de criptografia mudou. Por favor, digite a senha novamente e salve.' });
+      }
     }
     const result = await testarConexao({
       host: body.host,
