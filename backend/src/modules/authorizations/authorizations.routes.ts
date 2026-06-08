@@ -103,6 +103,10 @@ authorizationsRouter.post(
 
 async function nextSeq(tx: any): Promise<number> {
   const today = new Date();
+  // Advisory lock keyed on today's date — serializes concurrent emissions to prevent duplicate codigo
+  const lockKey = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey})`;
+
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
   const count = await tx.authorization.count({ where: { emitidaEm: { gte: start, lt: end } } });
