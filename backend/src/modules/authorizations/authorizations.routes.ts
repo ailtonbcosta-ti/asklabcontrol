@@ -52,12 +52,13 @@ authorizationsRouter.post(
       const auths: any[] = [];
 
       for (const a of plano.autorizacoes) {
-        const seq = await nextSeq(tx);
-        const codigo = gerarCodigoAutorizacao(seq);
+        // Insert with temporary unique placeholder; update with id-based code after INSERT.
+        // Using the row's own auto-increment id eliminates all race conditions on codigo.
+        const tempCodigo = `__tmp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
-        const created = await tx.authorization.create({
+        const inserted = await tx.authorization.create({
           data: {
-            codigo,
+            codigo: tempCodigo,
             patientId: body.patientId,
             userId,
             laboratoryId: a.laboratoryId,
@@ -74,6 +75,12 @@ authorizationsRouter.post(
               })),
             },
           },
+        });
+
+        const codigo = gerarCodigoAutorizacao(inserted.id);
+        const created = await tx.authorization.update({
+          where: { id: inserted.id },
+          data: { codigo },
           include: { items: true, laboratory: true, contract: true },
         });
 
@@ -101,17 +108,6 @@ authorizationsRouter.post(
   }),
 );
 
-async function nextSeq(tx: any): Promise<number> {
-  const today = new Date();
-  // Advisory lock keyed on today's date — serializes concurrent emissions to prevent duplicate codigo
-  const lockKey = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey})`;
-
-  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-  const count = await tx.authorization.count({ where: { emitidaEm: { gte: start, lt: end } } });
-  return count + 1;
-}
 
 authorizationsRouter.get('/', ah(async (req, res) => {
   const from = req.query.from ? new Date(String(req.query.from)) : undefined;
