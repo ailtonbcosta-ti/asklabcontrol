@@ -67,6 +67,7 @@ export interface PecPaciente {
   nacionalidade: string | null;
   municipioIbge: string | null;
   cep: string | null;
+  logradouroCodigo: string | null;
   logradouro: string | null;
   numero: string | null;
   complemento: string | null;
@@ -105,7 +106,8 @@ const SQL_CAD_INDIVIDUAL = `
          rc.nu_ms AS raca, et.co_etnia_cadsus AS etnia,
          CASE ind.co_nacionalidade::text WHEN '1' THEN '010' WHEN '2' THEN '020' WHEN '3' THEN '031' ELSE '010' END AS nacionalidade,
          SUBSTRING(loc.co_ibge FROM 1 FOR 6) AS ibge_municipio,
-         dom.nu_cep AS cep, dom.no_logradouro AS endereco, dom.nu_domicilio AS numero,
+         dom.nu_cep AS cep, tl.co_tp_logradouro_cadsus AS lograd_codigo,
+         dom.no_logradouro AS endereco, dom.nu_domicilio AS numero,
          dom.ds_complemento AS complemento, dom.no_bairro AS bairro,
          ind.nu_celular_cidadao AS telefone, ind.ds_email_cidadao AS email
     FROM tb_cds_cad_individual ind
@@ -115,12 +117,15 @@ const SQL_CAD_INDIVIDUAL = `
     LEFT JOIN LATERAL (
       SELECT dom.* FROM tb_cds_domicilio_familia df
         JOIN tb_cds_cad_domiciliar dom ON dom.co_seq_cds_cad_domiciliar = df.co_cds_cad_domiciliar
-       WHERE (df.nu_cartao_sus = ind.nu_cns_cidadao
-           OR (df.nu_cpf_cidadao IS NOT NULL AND df.nu_cpf_cidadao = ind.nu_cpf_cidadao))
-         AND dom.st_versao_atual = 1
+       WHERE dom.st_versao_atual = 1
+         AND ( df.nu_cartao_sus = ind.nu_cns_cidadao
+            OR (ind.nu_cpf_cidadao IS NOT NULL AND df.nu_cpf_cidadao = ind.nu_cpf_cidadao)
+            OR df.nu_cartao_sus = ind.nu_cartao_sus_responsavel
+            OR (ind.nu_cpf_responsavel IS NOT NULL AND df.nu_cpf_cidadao = ind.nu_cpf_responsavel) )
        ORDER BY dom.dt_cad_domiciliar DESC LIMIT 1
     ) dom ON TRUE
-    LEFT JOIN tb_localidade loc ON loc.co_localidade = dom.co_localidade_origem
+    LEFT JOIN tb_tipo_logradouro tl ON tl.co_tipo_logradouro = dom.tp_logradouro
+    LEFT JOIN tb_localidade loc     ON loc.co_localidade     = dom.co_localidade_origem
    WHERE ind.st_versao_atual = 1 AND ind.st_ficha_inativa = 0
      AND ($1::text IS NULL OR ind.nu_cns_cidadao = $1)
      AND ($2::text IS NULL OR ind.nu_cpf_cidadao = $2)
@@ -140,6 +145,7 @@ function map(row: any, origem: 'CAD_INDIVIDUAL' | 'CIDADAO'): PecPaciente {
     nacionalidade: row.nacionalidade ?? null,
     municipioIbge: row.ibge_municipio ?? null,
     cep: row.cep ?? null,
+    logradouroCodigo: row.lograd_codigo ?? null,
     logradouro: row.endereco ?? null,
     numero: row.numero ?? null,
     complemento: row.complemento ?? null,
@@ -177,10 +183,15 @@ export async function pecDisponivel(): Promise<boolean> {
   }
 }
 
+const TABELAS_PEC = [
+  'tb_cidadao', 'tb_cds_cad_individual', 'tb_cds_cad_domiciliar',
+  'tb_cds_domicilio_familia', 'tb_raca_cor', 'tb_etnia', 'tb_localidade', 'tb_tipo_logradouro',
+];
+
 /** Testa uma config arbitrária (sem persistir nem invalidar pool ativo). */
 export async function testarConexao(opts: {
-  host: string; porta: number; database: string; usuario: string; senha: string; sslMode: string;
-}): Promise<{ ok: boolean; mensagem: string; tabelasEncontradas?: number }> {
+  host: string; porta: number; database: string; usuario: string; senha: string; sslMode: string; schemaName?: string;
+}): Promise<{ ok: boolean; compativel?: boolean; mensagem: string; tabelasEncontradas?: number; faltando?: string[]; semPermissao?: string[] }> {
   const pool = new Pool({
     host: opts.host,
     port: opts.porta,
@@ -194,14 +205,58 @@ export async function testarConexao(opts: {
   });
   try {
     await pool.query('SELECT 1');
+    const schema = opts.schemaName || 'public';
+    const usuario = opts.usuario;
+
+    // pg_catalog não filtra por permissão (ao contrário de information_schema):
+    // diferencia "tabela ausente" de "sem permissão SELECT"
     const r = await pool.query(`
-      SELECT COUNT(*)::int AS n
-        FROM information_schema.tables
-       WHERE table_schema = 'public'
-         AND table_name IN ('tb_cidadao','tb_cds_cad_individual','tb_unidade_saude','tb_atend')
-    `);
-    const n = r.rows[0]?.n ?? 0;
-    return { ok: true, mensagem: `Conectado. ${n}/4 tabelas-chave do PEC encontradas.`, tabelasEncontradas: n };
+      SELECT t AS nome,
+             to_regclass(format('%I.%I', $1::text, t)) IS NOT NULL AS existe,
+             CASE WHEN to_regclass(format('%I.%I', $1::text, t)) IS NOT NULL
+                  THEN has_table_privilege(format('%I.%I', $1::text, t), 'SELECT') END AS legivel
+        FROM unnest($2::text[]) t
+    `, [schema, TABELAS_PEC]);
+
+    const usageOk = (await pool.query(`SELECT has_schema_privilege($1::text, 'USAGE') AS u`, [schema])).rows[0].u;
+
+    const faltando     = r.rows.filter((x: any) => !x.existe).map((x: any) => x.nome);
+    const semPermissao = r.rows.filter((x: any) => x.existe && !x.legivel).map((x: any) => x.nome);
+    const legiveis     = r.rows.filter((x: any) => x.legivel === true).length;
+    const compativel   = legiveis === TABELAS_PEC.length;
+
+    let mensagem: string;
+    if (compativel) {
+      mensagem = `Conexão OK. ${legiveis}/${TABELAS_PEC.length} tabelas PEC acessíveis.`;
+    } else if (!usageOk) {
+      mensagem = `O usuário "${usuario}" não tem acesso (USAGE) ao schema "${schema}". `
+        + `Execute no banco do PEC: GRANT USAGE ON SCHEMA "${schema}" TO "${usuario}";`;
+    } else if (semPermissao.length && !faltando.length) {
+      mensagem = `As tabelas existem, mas "${usuario}" não tem SELECT em: ${semPermissao.join(', ')}. `
+        + `Execute: GRANT SELECT ON ALL TABLES IN SCHEMA "${schema}" TO "${usuario}";`;
+    } else if (faltando.length && !semPermissao.length) {
+      mensagem = `Estrutura incompatível: tabelas não encontradas no schema "${schema}": ${faltando.join(', ')}.`;
+    } else {
+      mensagem = `Estrutura/permissões incompletas no schema "${schema}".`
+        + (faltando.length ? ` Ausentes: ${faltando.join(', ')}.` : '')
+        + (semPermissao.length ? ` Sem SELECT para "${usuario}": ${semPermissao.join(', ')}.` : '');
+    }
+
+    // Aviso não-bloqueante: monitora se Cadastro Individual está recebendo dados
+    if (compativel) {
+      try {
+        const fr = await pool.query(`
+          SELECT (now()::date - max(dt_cad_individual)::date) AS dias
+            FROM tb_cds_cad_individual
+        `);
+        const dias = fr.rows[0]?.dias;
+        if (dias != null && dias > 90) {
+          mensagem += ` ⚠ Cadastro Individual sem novos registros há ${dias} dias — endereços podem estar desatualizados.`;
+        }
+      } catch { /* probe informativo */ }
+    }
+
+    return { ok: true, compativel, mensagem, tabelasEncontradas: legiveis, faltando, semPermissao };
   } catch (e: any) {
     return { ok: false, mensagem: e.message };
   } finally {
