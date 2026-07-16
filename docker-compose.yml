@@ -17,6 +17,7 @@ services:
 
   backend:
     image: ghcr.io/ailtonbcosta-ti/asklabcontrol-backend:latest
+    pull_policy: always
     restart: unless-stopped
     depends_on:
       postgres:
@@ -33,6 +34,7 @@ services:
 
   frontend:
     image: ghcr.io/ailtonbcosta-ti/asklabcontrol-frontend:latest
+    pull_policy: always
     restart: unless-stopped
     depends_on:
       - backend
