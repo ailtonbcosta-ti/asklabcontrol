@@ -44,12 +44,22 @@ patientsRouter.get(
     if (await pecDisponivel()) {
       pec = await buscarPaciente({ cpf, cns });
       if (pec) {
+        // Garante que campos Char(n) do schema não excedam o limite
+        // O PEC pode retornar "MASCULINO"/"FEMININO" em no_sexo (tb_cidadao)
+        const normSexo = (v?: string | null) => {
+          if (!v) return null;
+          const s = v.trim().toUpperCase();
+          return s.startsWith('M') ? 'M' : s.startsWith('F') ? 'F' : s.slice(0, 1) || null;
+        };
+        const str1 = (v?: string | null) => (v ? String(v).slice(0, 1) : null);
+        const str2 = (v?: string | null) => (v ? String(v).slice(0, 2) : null);
+
         const data = {
           cpf: pec.cpf || cpf,
           cns: pec.cns || cns,
           nome: pec.nome || local?.nome || '—',
           dataNascimento: pec.dataNascimento ?? local?.dataNascimento,
-          sexo: pec.sexo ?? local?.sexo,
+          sexo: normSexo(pec.sexo) ?? (local?.sexo ? str1(local.sexo) : null),
           raca: pec.raca ?? local?.raca,
           etnia: pec.etnia ?? local?.etnia,
           nacionalidade: pec.nacionalidade ?? local?.nacionalidade,
