@@ -133,13 +133,23 @@ const SQL_CAD_INDIVIDUAL = `
    LIMIT 1
 `;
 
+// tb_cidadao.no_sexo retorna "MASCULINO"/"FEMININO"; tb_sexo.sg_sexo retorna "M"/"F".
+// O schema tem sexo @db.Char(1), então normaliza sempre para 1 char.
+function normalizeSexo(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const s = String(v).trim().toUpperCase();
+  if (s.startsWith('M')) return 'M';
+  if (s.startsWith('F')) return 'F';
+  return s.slice(0, 1) || null;
+}
+
 function map(row: any, origem: 'CAD_INDIVIDUAL' | 'CIDADAO'): PecPaciente {
   return {
     cns: row.cns ?? null,
     cpf: row.cpf ?? null,
     nome: row.nome ?? null,
     dataNascimento: row.data_nascimento ? new Date(row.data_nascimento) : null,
-    sexo: row.sexo ?? null,
+    sexo: normalizeSexo(row.sexo),
     raca: row.raca ?? null,
     etnia: row.etnia ?? null,
     nacionalidade: row.nacionalidade ?? null,
