@@ -66,6 +66,8 @@ export interface PecPaciente {
   etnia: string | null;
   nacionalidade: string | null;
   municipioIbge: string | null;
+  cidade: string | null;
+  uf: string | null;
   cep: string | null;
   logradouroCodigo: string | null;
   logradouro: string | null;
@@ -83,6 +85,7 @@ const SQL_CIDADAO = `
          rc.nu_ms AS raca, et.co_etnia_cadsus AS etnia,
          CASE cid.co_nacionalidade WHEN '1' THEN '010' WHEN '2' THEN '020' WHEN '3' THEN '031' ELSE '010' END AS nacionalidade,
          SUBSTRING(loc.co_ibge FROM 1 FOR 6) AS ibge_municipio,
+         loc.no_localidade AS cidade,
          cid.ds_cep AS cep, cid.ds_logradouro AS endereco, cid.nu_numero AS numero,
          cid.ds_complemento AS complemento, cid.no_bairro AS bairro,
          COALESCE(cid.nu_telefone_celular, cid.nu_telefone_contato, cid.nu_telefone_residencial) AS telefone,
@@ -106,6 +109,7 @@ const SQL_CAD_INDIVIDUAL = `
          rc.nu_ms AS raca, et.co_etnia_cadsus AS etnia,
          CASE ind.co_nacionalidade::text WHEN '1' THEN '010' WHEN '2' THEN '020' WHEN '3' THEN '031' ELSE '010' END AS nacionalidade,
          SUBSTRING(loc.co_ibge FROM 1 FOR 6) AS ibge_municipio,
+         loc.no_localidade AS cidade,
          dom.nu_cep AS cep, tl.co_tp_logradouro_cadsus AS lograd_codigo,
          dom.no_logradouro AS endereco, dom.nu_domicilio AS numero,
          dom.ds_complemento AS complemento, dom.no_bairro AS bairro,
@@ -133,6 +137,20 @@ const SQL_CAD_INDIVIDUAL = `
    LIMIT 1
 `;
 
+// Os 2 primeiros dígitos do código IBGE identificam o estado.
+const IBGE_UF: Record<string, string> = {
+  '11':'RO','12':'AC','13':'AM','14':'RR','15':'PA','16':'AP','17':'TO',
+  '21':'MA','22':'PI','23':'CE','24':'RN','25':'PB','26':'PE','27':'AL','28':'SE','29':'BA',
+  '31':'MG','32':'ES','33':'RJ','35':'SP',
+  '41':'PR','42':'SC','43':'RS',
+  '50':'MS','51':'MT','52':'GO','53':'DF',
+};
+
+function ibgeToUf(ibge: string | null | undefined): string | null {
+  if (!ibge) return null;
+  return IBGE_UF[ibge.slice(0, 2)] ?? null;
+}
+
 // tb_cidadao.no_sexo retorna "MASCULINO"/"FEMININO"; tb_sexo.sg_sexo retorna "M"/"F".
 // O schema tem sexo @db.Char(1), então normaliza sempre para 1 char.
 function normalizeSexo(v: string | null | undefined): string | null {
@@ -154,6 +172,8 @@ function map(row: any, origem: 'CAD_INDIVIDUAL' | 'CIDADAO'): PecPaciente {
     etnia: row.etnia ?? null,
     nacionalidade: row.nacionalidade ?? null,
     municipioIbge: row.ibge_municipio ?? null,
+    cidade: row.cidade ?? null,
+    uf: ibgeToUf(row.ibge_municipio),
     cep: row.cep ?? null,
     logradouroCodigo: row.lograd_codigo ?? null,
     logradouro: row.endereco ?? null,

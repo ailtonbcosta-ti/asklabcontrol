@@ -70,6 +70,8 @@ patientsRouter.get(
           numero: pec.numero ?? local?.numero,
           complemento: pec.complemento ?? local?.complemento,
           bairro: pec.bairro ?? local?.bairro,
+          cidade: pec.cidade ?? local?.cidade,
+          uf: pec.uf ?? local?.uf,
           municipioIbge: pec.municipioIbge ?? local?.municipioIbge,
           pecSyncedAt: new Date(),
           pecSourceId: pec.origem,
