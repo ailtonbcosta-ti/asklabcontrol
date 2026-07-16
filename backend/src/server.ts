@@ -12,6 +12,9 @@ import { startCronJobs } from './jobs/cron';
 
 const app = express();
 
+// Necessário atrás de reverse proxy (Traefik/Nginx/Easypanel)
+app.set('trust proxy', 1);
+
 app.use(helmet());
 app.use(cors({ origin: env.CORS_ORIGIN === '*' ? true : env.CORS_ORIGIN.split(','), credentials: true }));
 app.use(cookieParser());
