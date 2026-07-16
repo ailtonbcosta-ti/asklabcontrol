@@ -11,6 +11,12 @@ patientsRouter.use(authRequired);
 
 const onlyDigits = (v?: string | null) => (v ? v.replace(/\D/g, '') : null);
 
+// Converte texto para maiúsculo sem acentuação (padrão cadastral)
+const upperAscii = (v?: string | null): string | null => {
+  if (!v) return null;
+  return v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+};
+
 patientsRouter.get(
   '/',
   ah(async (req, res) => {
@@ -57,7 +63,7 @@ patientsRouter.get(
         const data = {
           cpf: pec.cpf || cpf,
           cns: pec.cns || cns,
-          nome: pec.nome || local?.nome || '—',
+          nome: upperAscii(pec.nome) || local?.nome || '—',
           dataNascimento: pec.dataNascimento ?? local?.dataNascimento,
           sexo: normSexo(pec.sexo) ?? (local?.sexo ? str1(local.sexo) : null),
           raca: pec.raca ?? local?.raca,
@@ -66,11 +72,11 @@ patientsRouter.get(
           telefone: pec.telefone ?? local?.telefone,
           email: pec.email ?? local?.email,
           cep: pec.cep ?? local?.cep,
-          logradouro: pec.logradouro ?? local?.logradouro,
-          numero: pec.numero ?? local?.numero,
-          complemento: pec.complemento ?? local?.complemento,
-          bairro: pec.bairro ?? local?.bairro,
-          cidade: pec.cidade ?? local?.cidade,
+          logradouro: upperAscii(pec.logradouro) ?? local?.logradouro,
+          numero: upperAscii(pec.numero) ?? local?.numero,
+          complemento: upperAscii(pec.complemento) ?? local?.complemento,
+          bairro: upperAscii(pec.bairro) ?? local?.bairro,
+          cidade: upperAscii(pec.cidade) ?? local?.cidade,
           uf: pec.uf ?? local?.uf,
           municipioIbge: pec.municipioIbge ?? local?.municipioIbge,
           pecSyncedAt: new Date(),
