@@ -3,6 +3,21 @@ import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 
 // ─── tipos ────────────────────────────────────────────────────────────────────
+interface IgnoradoSemId {
+  protocolo: string; nome: string; cpf: string; cns: string;
+  dataAtendimento: string; examenome: string;
+}
+interface IgnoradoSemCod {
+  protocolo: string; nome: string; codTabela: string;
+  examenome: string; quantidade: number;
+}
+interface RelatorioIgnorados {
+  competencia: string;
+  semId: IgnoradoSemId[];
+  semCodigo: IgnoradoSemCod[];
+  qtdZero: IgnoradoSemCod[];
+}
+
 interface Cfg {
   ativo: boolean;
   mysqlHost: string; mysqlPort: number; mysqlDatabase: string; mysqlUsuario: string;
@@ -50,6 +65,7 @@ export function BpaTerceirosHome() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [loadingIgnorados, setLoadingIgnorados] = useState(false);
+  const [relatorio, setRelatorio] = useState<RelatorioIgnorados | null>(null);
 
   useEffect(() => {
     api.get('/bpa-terceiros/config')
@@ -127,61 +143,99 @@ export function BpaTerceirosHome() {
     } finally { setExporting(false); }
   }
 
-  // ── exportação: relatório ignorados ───────────────────────────────────────
-  async function baixarRelatorioIgnorados() {
+  // ── relatório ignorados: abrir modal ──────────────────────────────────────
+  async function abrirRelatorio() {
     setLoadingIgnorados(true);
     try {
       const r = await api.get(`/bpa-terceiros/ignorados?competencia=${competencia}`);
-      const { semId, semCodigo, qtdZero } = r.data as {
-        semId: { protocolo: string; nome: string; cpf: string; cns: string; dataAtendimento: string; examenome: string }[];
-        semCodigo: { protocolo: string; nome: string; codTabela: string; examenome: string; quantidade: number }[];
-        qtdZero: { protocolo: string; nome: string; codTabela: string; examenome: string; quantidade: number }[];
-      };
-
-      const sep = ';';
-      const esc = (v: string | number) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-      const linhas: string[] = ['﻿']; // BOM para Excel
-
-      linhas.push(`RELATÓRIO DE ITENS IGNORADOS — Competência: ${labelComp}`);
-      linhas.push(`Gerado em: ${new Date().toLocaleString('pt-BR')}`);
-      linhas.push('');
-
-      linhas.push(`SEM CPF NEM CNS (${semId.length} itens)`);
-      linhas.push(['Protocolo', 'Paciente', 'Data Atendimento', 'Procedimento', 'CPF', 'CNS'].map(esc).join(sep));
-      for (const it of semId) {
-        linhas.push([it.protocolo, it.nome, it.dataAtendimento, it.examenome, it.cpf, it.cns].map(esc).join(sep));
-      }
-      if (semId.length === 0) linhas.push('"(nenhum)"');
-      linhas.push('');
-
-      linhas.push(`SEM CÓDIGO DE TABELA (${semCodigo.length} itens)`);
-      linhas.push(['Protocolo', 'Paciente', 'Procedimento', 'Código', 'Quantidade'].map(esc).join(sep));
-      for (const it of semCodigo) {
-        linhas.push([it.protocolo, it.nome, it.examenome, it.codTabela, it.quantidade].map(esc).join(sep));
-      }
-      if (semCodigo.length === 0) linhas.push('"(nenhum)"');
-      linhas.push('');
-
-      linhas.push(`QUANTIDADE ZERO / CANCELADOS (${qtdZero.length} itens)`);
-      linhas.push(['Protocolo', 'Paciente', 'Procedimento', 'Código', 'Quantidade'].map(esc).join(sep));
-      for (const it of qtdZero) {
-        linhas.push([it.protocolo, it.nome, it.examenome, it.codTabela, it.quantidade].map(esc).join(sep));
-      }
-      if (qtdZero.length === 0) linhas.push('"(nenhum)"');
-
-      const blob = new Blob([linhas.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `ignorados_${competencia}.csv`;
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success('Relatório gerado com sucesso!');
+      setRelatorio(r.data);
     } catch (e: any) {
-      toast.error(e.response?.data?.error || 'Erro ao gerar relatório');
+      toast.error(e.response?.data?.error || 'Erro ao carregar relatório');
     } finally {
       setLoadingIgnorados(false);
     }
+  }
+
+  // ── relatório ignorados: imprimir / PDF ────────────────────────────────────
+  function imprimirRelatorio(rel: RelatorioIgnorados, label: string) {
+    const e = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const th = (cols: string[]) => cols.map(c => `<th>${e(c)}</th>`).join('');
+    const td = (cols: unknown[]) => cols.map(c => `<td>${e(c)}</td>`).join('');
+
+    const tabelaSemId = rel.semId.length
+      ? `<table><thead><tr>${th(['#','Protocolo','Paciente','Data Atend.','Procedimento','CPF','CNS'])}</tr></thead><tbody>
+          ${rel.semId.map((r, i) => `<tr class="${i%2?'alt':''}"><td>${i+1}</td>${td([r.protocolo,r.nome,r.dataAtendimento,r.examenome,r.cpf||'—',r.cns||'—'])}</tr>`).join('')}
+         </tbody></table>`
+      : '<p class="vazio">Nenhum registro nesta categoria.</p>';
+
+    const tabelaSemCod = rel.semCodigo.length
+      ? `<table><thead><tr>${th(['#','Protocolo','Paciente','Procedimento','Código','Qtd.'])}</tr></thead><tbody>
+          ${rel.semCodigo.map((r, i) => `<tr class="${i%2?'alt':''}"><td>${i+1}</td>${td([r.protocolo,r.nome,r.examenome,r.codTabela||'—',r.quantidade])}</tr>`).join('')}
+         </tbody></table>`
+      : '<p class="vazio">Nenhum registro nesta categoria.</p>';
+
+    const tabelaQtdZero = rel.qtdZero.length
+      ? `<table><thead><tr>${th(['#','Protocolo','Paciente','Procedimento','Código SIGTAP','Qtd.'])}</tr></thead><tbody>
+          ${rel.qtdZero.map((r, i) => `<tr class="${i%2?'alt':''}"><td>${i+1}</td>${td([r.protocolo,r.nome,r.examenome,r.codTabela||'—',r.quantidade])}</tr>`).join('')}
+         </tbody></table>`
+      : '<p class="vazio">Nenhum registro nesta categoria.</p>';
+
+    const total = rel.semId.length + rel.semCodigo.length + rel.qtdZero.length;
+    const agora = new Date().toLocaleString('pt-BR');
+
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Ignorados — ${e(label)}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;font-size:11px;color:#1a1a1a;padding:20px}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #2563eb}
+  .header h1{font-size:16px;color:#1e40af;font-weight:700}
+  .header .meta{font-size:10px;color:#64748b;margin-top:4px}
+  .header .badge{background:#f1f5f9;border:1px solid #cbd5e1;border-radius:6px;padding:6px 12px;text-align:right;font-size:10px}
+  .badge strong{font-size:14px;color:#dc2626;display:block}
+  .section{margin-bottom:20px}
+  .section-title{display:flex;align-items:center;gap:8px;background:#f8fafc;border-left:4px solid #2563eb;padding:6px 10px;margin-bottom:8px;border-radius:0 4px 4px 0}
+  .section-title span{font-size:12px;font-weight:700;color:#1e3a8a;text-transform:uppercase;letter-spacing:.04em}
+  .section-title .count{margin-left:auto;background:#ef4444;color:#fff;border-radius:999px;padding:1px 8px;font-size:10px;font-weight:700}
+  .section-title.green{border-left-color:#16a34a}.section-title.green span{color:#14532d}.section-title.green .count{background:#16a34a}
+  .section-title.orange{border-left-color:#d97706}.section-title.orange span{color:#92400e}.section-title.orange .count{background:#d97706}
+  table{width:100%;border-collapse:collapse;font-size:10px}
+  th{background:#e2e8f0;color:#334155;text-align:left;padding:4px 6px;border:1px solid #cbd5e1;font-weight:700;white-space:nowrap}
+  td{padding:3px 6px;border:1px solid #e2e8f0;vertical-align:top}
+  tr.alt td{background:#f8fafc}
+  .vazio{color:#94a3b8;font-style:italic;padding:8px 0;font-size:10px}
+  .print-btn{display:inline-block;margin-bottom:16px;padding:6px 14px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+  @media print{.print-btn{display:none}@page{margin:1.5cm;size:A4 landscape}body{padding:0}table{page-break-inside:auto}tr{page-break-inside:avoid}}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨️ Imprimir / Exportar PDF</button>
+<div class="header">
+  <div>
+    <h1>Relatório de Itens Ignorados</h1>
+    <div class="meta">Competência: <strong>${e(label)}</strong> &nbsp;|&nbsp; Gerado em: ${e(agora)}</div>
+  </div>
+  <div class="badge">Total ignorados<strong>${total.toLocaleString('pt-BR')}</strong></div>
+</div>
+
+<div class="section">
+  <div class="section-title"><span>Sem CPF nem CNS</span><span class="count">${rel.semId.length.toLocaleString('pt-BR')}</span></div>
+  ${tabelaSemId}
+</div>
+
+<div class="section">
+  <div class="section-title orange"><span>Sem código de tabela (codTabela vazio)</span><span class="count">${rel.semCodigo.length.toLocaleString('pt-BR')}</span></div>
+  ${tabelaSemCod}
+</div>
+
+<div class="section">
+  <div class="section-title green"><span>Quantidade = 0 (cancelados)</span><span class="count">${rel.qtdZero.length.toLocaleString('pt-BR')}</span></div>
+  ${tabelaQtdZero}
+</div>
+</body></html>`;
+
+    const w = window.open('', '_blank', 'width=1280,height=900');
+    if (!w) { toast.error('Permita pop-ups para imprimir.'); return; }
+    w.document.write(html);
+    w.document.close();
   }
 
   const competencias = competenciasDisponiveis();
@@ -268,8 +322,8 @@ export function BpaTerceirosHome() {
                   {exporting ? 'Gerando arquivo...' : `Gerar arquivo BPA — ${labelComp}`}
                 </button>
                 {(preview.excluidos_sem_id > 0 || preview.excluidos_sem_codigo > 0 || preview.excluidos_qtd_zero > 0) && (
-                  <button className="btn-outline" onClick={baixarRelatorioIgnorados} disabled={loadingIgnorados}>
-                    {loadingIgnorados ? 'Gerando relatório...' : 'Relatório Ignorados'}
+                  <button className="btn-outline" onClick={abrirRelatorio} disabled={loadingIgnorados}>
+                    {loadingIgnorados ? 'Carregando...' : 'Relatório Ignorados'}
                   </button>
                 )}
               </div>
@@ -413,6 +467,175 @@ export function BpaTerceirosHome() {
             <button className="btn-primary" onClick={salvarConfig} disabled={saving}>
               {saving ? 'Salvando...' : 'Salvar configuração'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Relatório Ignorados ───────────────────────────────────────── */}
+      {relatorio && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={e => { if (e.target === e.currentTarget) setRelatorio(null); }}>
+          <div className="bg-white rounded-2xl shadow-2xl flex flex-col w-full max-w-5xl max-h-[90vh]">
+
+            {/* Header do modal */}
+            <div className="flex items-start justify-between px-6 py-4 border-b border-slate-200 shrink-0">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">Relatório de Itens Ignorados</h2>
+                <p className="text-sm text-slate-500 mt-0.5">
+                  Competência: <span className="font-medium text-slate-700">{labelComp}</span>
+                  &nbsp;·&nbsp;
+                  {(relatorio.semId.length + relatorio.semCodigo.length + relatorio.qtdZero.length).toLocaleString('pt-BR')} itens ignorados no total
+                </p>
+              </div>
+              <div className="flex gap-2 ml-4 shrink-0">
+                <button className="btn-outline text-sm" onClick={() => imprimirRelatorio(relatorio, labelComp)}>
+                  🖨️ Imprimir / PDF
+                </button>
+                <button className="btn-outline text-sm" onClick={() => setRelatorio(null)}>✕ Fechar</button>
+              </div>
+            </div>
+
+            {/* Corpo scrollável */}
+            <div className="overflow-y-auto flex-1 px-6 py-4 space-y-6">
+
+              {/* Seção: sem CPF nem CNS */}
+              <div>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-1 self-stretch bg-red-500 rounded-full shrink-0" />
+                  <div>
+                    <div className="font-semibold text-slate-800">Sem CPF nem CNS</div>
+                    <div className="text-xs text-slate-500">Pacientes sem identificação — não entrarão no arquivo BPA</div>
+                  </div>
+                  <span className="ml-auto bg-red-100 text-red-700 text-xs font-bold px-2.5 py-0.5 rounded-full">
+                    {relatorio.semId.length.toLocaleString('pt-BR')}
+                  </span>
+                </div>
+                {relatorio.semId.length === 0
+                  ? <p className="text-sm text-slate-400 italic">Nenhum registro nesta categoria.</p>
+                  : (
+                    <div className="overflow-x-auto rounded-lg border border-slate-200">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-slate-100 text-slate-600">
+                            {['#','Protocolo','Paciente','Data Atend.','Procedimento','CPF','CNS'].map(h => (
+                              <th key={h} className="px-3 py-2 text-left font-semibold border-b border-slate-200 whitespace-nowrap">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {relatorio.semId.map((r, i) => (
+                            <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                              <td className="px-3 py-1.5 text-slate-400 border-b border-slate-100">{i+1}</td>
+                              <td className="px-3 py-1.5 font-mono border-b border-slate-100">{r.protocolo}</td>
+                              <td className="px-3 py-1.5 font-medium border-b border-slate-100">{r.nome}</td>
+                              <td className="px-3 py-1.5 border-b border-slate-100">{r.dataAtendimento}</td>
+                              <td className="px-3 py-1.5 border-b border-slate-100">{r.examenome}</td>
+                              <td className="px-3 py-1.5 border-b border-slate-100 text-slate-400">{r.cpf || '—'}</td>
+                              <td className="px-3 py-1.5 border-b border-slate-100 text-slate-400">{r.cns || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+              </div>
+
+              {/* Seção: sem código de tabela */}
+              <div>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-1 self-stretch bg-amber-500 rounded-full shrink-0" />
+                  <div>
+                    <div className="font-semibold text-slate-800">Sem código de tabela (codTabela vazio)</div>
+                    <div className="text-xs text-slate-500">Procedimentos sem código SIGTAP cadastrado na view</div>
+                  </div>
+                  <span className="ml-auto bg-amber-100 text-amber-700 text-xs font-bold px-2.5 py-0.5 rounded-full">
+                    {relatorio.semCodigo.length.toLocaleString('pt-BR')}
+                  </span>
+                </div>
+                {relatorio.semCodigo.length === 0
+                  ? <p className="text-sm text-slate-400 italic">Nenhum registro nesta categoria.</p>
+                  : (
+                    <div className="overflow-x-auto rounded-lg border border-slate-200">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-slate-100 text-slate-600">
+                            {['#','Protocolo','Paciente','Procedimento','Código','Qtd.'].map(h => (
+                              <th key={h} className="px-3 py-2 text-left font-semibold border-b border-slate-200 whitespace-nowrap">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {relatorio.semCodigo.map((r, i) => (
+                            <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                              <td className="px-3 py-1.5 text-slate-400 border-b border-slate-100">{i+1}</td>
+                              <td className="px-3 py-1.5 font-mono border-b border-slate-100">{r.protocolo}</td>
+                              <td className="px-3 py-1.5 font-medium border-b border-slate-100">{r.nome}</td>
+                              <td className="px-3 py-1.5 border-b border-slate-100">{r.examenome}</td>
+                              <td className="px-3 py-1.5 text-slate-400 border-b border-slate-100">{r.codTabela || '—'}</td>
+                              <td className="px-3 py-1.5 border-b border-slate-100">{r.quantidade}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+              </div>
+
+              {/* Seção: quantidade zero */}
+              <div>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-1 self-stretch bg-slate-400 rounded-full shrink-0" />
+                  <div>
+                    <div className="font-semibold text-slate-800">Quantidade = 0 (cancelados)</div>
+                    <div className="text-xs text-slate-500">Atendimentos cancelados ou zerados — excluídos do arquivo</div>
+                  </div>
+                  <span className="ml-auto bg-slate-100 text-slate-600 text-xs font-bold px-2.5 py-0.5 rounded-full">
+                    {relatorio.qtdZero.length.toLocaleString('pt-BR')}
+                  </span>
+                </div>
+                {relatorio.qtdZero.length === 0
+                  ? <p className="text-sm text-slate-400 italic">Nenhum registro nesta categoria.</p>
+                  : (
+                    <div className="overflow-x-auto rounded-lg border border-slate-200">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-slate-100 text-slate-600">
+                            {['#','Protocolo','Paciente','Procedimento','Código SIGTAP','Qtd.'].map(h => (
+                              <th key={h} className="px-3 py-2 text-left font-semibold border-b border-slate-200 whitespace-nowrap">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {relatorio.qtdZero.map((r, i) => (
+                            <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                              <td className="px-3 py-1.5 text-slate-400 border-b border-slate-100">{i+1}</td>
+                              <td className="px-3 py-1.5 font-mono border-b border-slate-100">{r.protocolo}</td>
+                              <td className="px-3 py-1.5 font-medium border-b border-slate-100">{r.nome}</td>
+                              <td className="px-3 py-1.5 border-b border-slate-100">{r.examenome}</td>
+                              <td className="px-3 py-1.5 font-mono border-b border-slate-100">{r.codTabela || '—'}</td>
+                              <td className="px-3 py-1.5 border-b border-slate-100">{r.quantidade}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+              </div>
+
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-3 border-t border-slate-100 bg-slate-50 rounded-b-2xl shrink-0 flex justify-between items-center">
+              <p className="text-xs text-slate-400">
+                Gerado em {new Date().toLocaleString('pt-BR')}
+              </p>
+              <div className="flex gap-2">
+                <button className="btn-outline text-sm" onClick={() => imprimirRelatorio(relatorio, labelComp)}>
+                  🖨️ Imprimir / Exportar PDF
+                </button>
+                <button className="btn-outline text-sm" onClick={() => setRelatorio(null)}>Fechar</button>
+              </div>
+            </div>
           </div>
         </div>
       )}
