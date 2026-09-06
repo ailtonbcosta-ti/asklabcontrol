@@ -40,6 +40,10 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next: NextFun
     if (err.code === 'P2025') {
       return res.status(404).json({ error: 'Registro não encontrado' });
     }
+    if (err.code === 'P2021') {
+      logger.error({ err }, 'Prisma table not found — prisma db push may not have run');
+      return res.status(500).json({ error: 'Tabela não encontrada no banco de dados. Execute prisma db push.' });
+    }
     logger.warn({ err: { code: err.code, meta: err.meta, message: err.message } }, 'Prisma known error');
     return res.status(400).json({ error: err.message.split('\n').filter(Boolean).pop() || 'Erro do banco de dados' });
   }

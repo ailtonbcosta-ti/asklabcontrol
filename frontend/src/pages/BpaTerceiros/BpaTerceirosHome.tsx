@@ -50,7 +50,14 @@ export function BpaTerceirosHome() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  useEffect(() => { api.get('/bpa-terceiros/config').then(r => setCfg(r.data)).catch(() => {}); }, []);
+  useEffect(() => {
+    api.get('/bpa-terceiros/config')
+      .then(r => setCfg(r.data))
+      .catch((e: any) => {
+        const msg = e.response?.data?.error;
+        if (msg) toast.error(`Erro ao carregar configuração: ${msg}`);
+      });
+  }, []);
 
   function setC<K extends keyof Cfg>(k: K, v: Cfg[K]) { setCfg(c => ({ ...c, [k]: v })); }
 
