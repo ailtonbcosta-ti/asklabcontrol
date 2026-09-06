@@ -18,6 +18,7 @@ import { UsersList } from './pages/Users/UsersList';
 import { Settings } from './pages/Settings/Settings';
 import { SigtapManager } from './pages/Settings/SigtapManager';
 import { PecSettings } from './pages/Settings/PecSettings';
+import { BpaTerceirosHome } from './pages/BpaTerceiros/BpaTerceirosHome';
 
 function Guard({ children, roles }: { children: JSX.Element; roles?: Role[] }) {
   const { user } = useAuth();
@@ -48,6 +49,7 @@ export function App() {
         <Route path="/configuracoes" element={<Guard roles={['ADMIN']}><Settings /></Guard>} />
         <Route path="/configuracoes/sigtap" element={<Guard roles={['ADMIN']}><SigtapManager /></Guard>} />
         <Route path="/configuracoes/pec" element={<Guard roles={['ADMIN']}><PecSettings /></Guard>} />
+        <Route path="/bpa-terceiros" element={<Guard roles={['ADMIN', 'GESTOR']}><BpaTerceirosHome /></Guard>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

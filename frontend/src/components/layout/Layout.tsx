@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../stores/auth';
-import { Users, Settings as SettingsIcon, FileText, FilePlus, FileBarChart, ClipboardList, Building2, LogOut, Beaker, Stethoscope, Database, FlaskConical } from 'lucide-react';
+import { Users, Settings as SettingsIcon, FileText, FilePlus, FileBarChart, ClipboardList, Building2, LogOut, Beaker, Stethoscope, Database, FlaskConical, FileOutput } from 'lucide-react';
 import { api } from '../../lib/api';
 
 const baseNav = [
@@ -20,7 +20,10 @@ export function Layout() {
   const { data: cfg } = useQuery({ queryKey: ['cfg-public'], queryFn: () => api.get('/config').then((r) => r.data) });
 
   const items = [...baseNav];
-  if (user?.role === 'ADMIN' || user?.role === 'GESTOR') items.push({ to: '/relatorios', label: 'Relatórios', icon: FileBarChart });
+  if (user?.role === 'ADMIN' || user?.role === 'GESTOR') {
+    items.push({ to: '/relatorios', label: 'Relatórios', icon: FileBarChart });
+    items.push({ to: '/bpa-terceiros', label: 'BPA Terceiros', icon: FileOutput });
+  }
   if (user?.role === 'ADMIN') {
     items.push({ to: '/usuarios', label: 'Usuários', icon: Users });
     items.push({ to: '/configuracoes', label: 'Configurações', icon: SettingsIcon });

@@ -447,6 +447,36 @@ model SigtapJob {
   @@map("sigtap_jobs")
 }
 
+// ─── BPA Terceiros (singleton) ───────────────────────────
+model BpaTerceirosConfig {
+  id                      Int       @id @default(1)
+  // Conexão MySQL do sistema terceiro
+  ativo                   Boolean   @default(false)
+  mysqlHost               String?
+  mysqlPort               Int       @default(3306)
+  mysqlDatabase           String?
+  mysqlUsuario            String?
+  mysqlSenhaCriptografada String?
+  mysqlViewName           String    @default("atendimentobpa")
+  // Defaults BPA
+  cnes                    String?   @db.VarChar(7)
+  cnsProfissional         String?   @db.VarChar(15)
+  cbo                     String?   @db.VarChar(6)
+  ine                     String?   @db.VarChar(10)
+  ibgeMunicipio           String?   @db.VarChar(6)
+  orgaoOrigem             String?
+  orgaoDestino            String?
+  indicadorDestino        String    @default("M") @db.Char(1)
+  versao                  String    @default("D05.00")
+  // Último teste
+  ultimoTesteEm           DateTime?
+  ultimoTesteOk           Boolean?
+  ultimoTesteMsg          String?
+  updatedAt               DateTime  @updatedAt
+
+  @@map("bpa_terceiros_config")
+}
+
 // ─── Controle de Reagentes ────────────────────────────────
 model ReagentContract {
   id           Int      @id @default(autoincrement())
