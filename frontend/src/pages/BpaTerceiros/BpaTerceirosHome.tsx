@@ -49,6 +49,7 @@ export function BpaTerceirosHome() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [loadingIgnorados, setLoadingIgnorados] = useState(false);
 
   useEffect(() => {
     api.get('/bpa-terceiros/config')
@@ -124,6 +125,63 @@ export function BpaTerceirosHome() {
         catch { toast.error('Erro ao exportar'); }
       } else { toast.error(e.response?.data?.error || 'Erro ao exportar'); }
     } finally { setExporting(false); }
+  }
+
+  // ── exportação: relatório ignorados ───────────────────────────────────────
+  async function baixarRelatorioIgnorados() {
+    setLoadingIgnorados(true);
+    try {
+      const r = await api.get(`/bpa-terceiros/ignorados?competencia=${competencia}`);
+      const { semId, semCodigo, qtdZero } = r.data as {
+        semId: { protocolo: string; nome: string; cpf: string; cns: string; dataAtendimento: string; examenome: string }[];
+        semCodigo: { protocolo: string; nome: string; codTabela: string; examenome: string; quantidade: number }[];
+        qtdZero: { protocolo: string; nome: string; codTabela: string; examenome: string; quantidade: number }[];
+      };
+
+      const sep = ';';
+      const esc = (v: string | number) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const linhas: string[] = ['﻿']; // BOM para Excel
+
+      linhas.push(`RELATÓRIO DE ITENS IGNORADOS — Competência: ${labelComp}`);
+      linhas.push(`Gerado em: ${new Date().toLocaleString('pt-BR')}`);
+      linhas.push('');
+
+      linhas.push(`SEM CPF NEM CNS (${semId.length} itens)`);
+      linhas.push(['Protocolo', 'Paciente', 'Data Atendimento', 'Procedimento', 'CPF', 'CNS'].map(esc).join(sep));
+      for (const it of semId) {
+        linhas.push([it.protocolo, it.nome, it.dataAtendimento, it.examenome, it.cpf, it.cns].map(esc).join(sep));
+      }
+      if (semId.length === 0) linhas.push('"(nenhum)"');
+      linhas.push('');
+
+      linhas.push(`SEM CÓDIGO DE TABELA (${semCodigo.length} itens)`);
+      linhas.push(['Protocolo', 'Paciente', 'Procedimento', 'Código', 'Quantidade'].map(esc).join(sep));
+      for (const it of semCodigo) {
+        linhas.push([it.protocolo, it.nome, it.examenome, it.codTabela, it.quantidade].map(esc).join(sep));
+      }
+      if (semCodigo.length === 0) linhas.push('"(nenhum)"');
+      linhas.push('');
+
+      linhas.push(`QUANTIDADE ZERO / CANCELADOS (${qtdZero.length} itens)`);
+      linhas.push(['Protocolo', 'Paciente', 'Procedimento', 'Código', 'Quantidade'].map(esc).join(sep));
+      for (const it of qtdZero) {
+        linhas.push([it.protocolo, it.nome, it.examenome, it.codTabela, it.quantidade].map(esc).join(sep));
+      }
+      if (qtdZero.length === 0) linhas.push('"(nenhum)"');
+
+      const blob = new Blob([linhas.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ignorados_${competencia}.csv`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Relatório gerado com sucesso!');
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || 'Erro ao gerar relatório');
+    } finally {
+      setLoadingIgnorados(false);
+    }
   }
 
   const competencias = competenciasDisponiveis();
@@ -204,11 +262,16 @@ export function BpaTerceirosHome() {
                 </div>
               )}
 
-              <div className="flex gap-2 pt-1">
+              <div className="flex flex-wrap gap-2 pt-1">
                 <button className="btn-primary" onClick={exportar}
                   disabled={exporting || preview.incluidos === 0 || !cfg.cnes || !cfg.cnsProfissional || !cfg.cbo}>
                   {exporting ? 'Gerando arquivo...' : `Gerar arquivo BPA — ${labelComp}`}
                 </button>
+                {(preview.excluidos_sem_id > 0 || preview.excluidos_sem_codigo > 0 || preview.excluidos_qtd_zero > 0) && (
+                  <button className="btn-outline" onClick={baixarRelatorioIgnorados} disabled={loadingIgnorados}>
+                    {loadingIgnorados ? 'Gerando relatório...' : 'Relatório Ignorados'}
+                  </button>
+                )}
               </div>
             </div>
           )}

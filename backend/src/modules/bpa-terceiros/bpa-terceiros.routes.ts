@@ -100,6 +100,47 @@ bpaTerceirosRouter.get('/preview', ah(async (req, res) => {
   });
 }));
 
+// ── GET /bpa-terceiros/ignorados?competencia=YYYYMM ──────────────────────────
+bpaTerceirosRouter.get('/ignorados', ah(async (req, res) => {
+  const competencia = String(req.query.competencia || '');
+  if (!/^\d{6}$/.test(competencia)) return res.status(400).json({ error: 'competencia deve ser YYYYMM (ex: 202607)' });
+
+  const rows = await buscarAtendimentos(competencia);
+
+  const semId = rows
+    .filter((r: any) => !r.cpf?.trim() && !r.cns?.trim())
+    .map((r: any) => ({
+      protocolo: r.protocolo ?? '',
+      nome: r.nome ?? '',
+      cpf: r.cpf ?? '',
+      cns: r.cns ?? '',
+      dataAtendimento: r.dataAtendimento ?? '',
+      examenome: r.examenome ?? '',
+    }));
+
+  const semCodigo = rows
+    .filter((r: any) => !r.codTabela?.trim())
+    .map((r: any) => ({
+      protocolo: r.protocolo ?? '',
+      nome: r.nome ?? '',
+      codTabela: r.codTabela ?? '',
+      examenome: r.examenome ?? '',
+      quantidade: r.quantidade ?? 0,
+    }));
+
+  const qtdZero = rows
+    .filter((r: any) => Number(r.quantidade) === 0)
+    .map((r: any) => ({
+      protocolo: r.protocolo ?? '',
+      nome: r.nome ?? '',
+      codTabela: r.codTabela ?? '',
+      examenome: r.examenome ?? '',
+      quantidade: r.quantidade ?? 0,
+    }));
+
+  res.json({ competencia, semId, semCodigo, qtdZero });
+}));
+
 // ── GET /bpa-terceiros/exportar?competencia=YYYYMM ───────────────────────────
 bpaTerceirosRouter.get('/exportar', ah(async (req, res) => {
   const competencia = String(req.query.competencia || '');
