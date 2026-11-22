@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { AlertTriangle, Trash2, Upload } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../stores/auth';
+import { BackupCard } from './BackupCard';
 
 type LogoTipo = 'sistema' | 'a4' | 'thermal80';
 const LOGO_FIELD: Record<LogoTipo, 'logoUrl' | 'logoA4Url' | 'logoThermal80Url'> = {
@@ -143,6 +144,8 @@ export function Settings() {
           <Link className="btn-outline" to="/configuracoes/pec">Configurar PEC</Link>
         </div>
       </div>
+
+      {me?.role === 'ADMIN' && <BackupCard />}
 
       {me?.role === 'ADMIN' && (
         <div className="border-2 border-red-300 bg-red-50 rounded-lg p-4 space-y-2">

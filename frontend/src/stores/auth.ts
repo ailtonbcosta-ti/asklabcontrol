@@ -21,6 +21,12 @@ export const useAuth = create<AuthState>()(
       setAccess: (t) => set({ access: t }),
       clear: () => set({ user: null, access: null }),
     }),
-    { name: 'asklab.auth' },
+    {
+      name: 'asklab.auth',
+      // O access token fica só em memória (não vai para o localStorage, onde ficaria
+      // exposto a qualquer script). Ao recarregar a página ele é renovado pelo cookie
+      // httpOnly de refresh no primeiro 401.
+      partialize: (s) => ({ user: s.user }),
+    },
   ),
 );

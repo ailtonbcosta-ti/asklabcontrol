@@ -6,8 +6,14 @@ export const api = axios.create({
   withCredentials: true,
 });
 
-api.interceptors.request.use((config) => {
-  const token = useAuth.getState().access;
+api.interceptors.request.use(async (config) => {
+  let token = useAuth.getState().access;
+  // Após recarregar a página o access token (só em memória) não existe: renova antes
+  // de chamar a API, em vez de esperar o 401.
+  const url = config.url || '';
+  if (!token && useAuth.getState().user && !url.includes('/auth/')) {
+    token = await refresh();
+  }
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
@@ -33,7 +39,9 @@ async function refresh(): Promise<string | null> {
 api.interceptors.response.use(
   (r) => r,
   async (err) => {
-    if (err.response?.status === 401 && !err.config._retry) {
+    const url: string = err.config?.url || '';
+    const isAuthCall = url.includes('/auth/login') || url.includes('/auth/refresh') || url.includes('/auth/logout');
+    if (err.response?.status === 401 && err.config && !err.config._retry && !isAuthCall) {
       err.config._retry = true;
       const newToken = await refresh();
       if (newToken) {

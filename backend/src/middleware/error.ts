@@ -1,6 +1,7 @@
 import type { ErrorRequestHandler, NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
 import { Prisma } from '@prisma/client';
+import { MulterError } from 'multer';
 import { logger } from '../config/logger';
 
 export class HttpError extends Error {
@@ -24,7 +25,19 @@ function prettyField(target: unknown): string {
 
 export const errorHandler: ErrorRequestHandler = (err, _req, res, _next: NextFunction) => {
   if (err instanceof ZodError) {
-    return res.status(400).json({ error: 'Validação falhou', details: err.flatten() });
+    const first = err.issues[0];
+    const campo = first?.path?.length ? `${FIELD_LABELS[String(first.path[0])] || first.path.join('.')}: ` : '';
+    return res.status(400).json({ error: first ? `Validação falhou — ${campo}${first.message}` : 'Validação falhou', details: err.flatten() });
+  }
+  if (err instanceof MulterError) {
+    const msg = err.code === 'LIMIT_FILE_SIZE' ? 'Arquivo excede o tamanho máximo permitido' : 'Falha no envio do arquivo';
+    return res.status(400).json({ error: msg });
+  }
+  if (err?.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'JSON inválido' });
+  }
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Requisição muito grande' });
   }
   if (err instanceof HttpError) {
     return res.status(err.status).json({ error: err.message, details: err.details });

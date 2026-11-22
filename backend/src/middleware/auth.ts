@@ -20,21 +20,36 @@ declare global {
   }
 }
 
+const ALG = 'HS256' as const;
+
 export const signAccess = (u: AuthUser) =>
-  jwt.sign(u, env.JWT_ACCESS_SECRET, { expiresIn: env.JWT_ACCESS_TTL as any });
+  jwt.sign({ id: u.id, email: u.email, role: u.role, nome: u.nome, typ: 'access' }, env.JWT_ACCESS_SECRET, {
+    algorithm: ALG,
+    expiresIn: env.JWT_ACCESS_TTL as any,
+  });
 
 export const signRefresh = (u: { id: number }) =>
-  jwt.sign(u, env.JWT_REFRESH_SECRET, { expiresIn: env.JWT_REFRESH_TTL as any });
+  jwt.sign({ id: u.id, typ: 'refresh' }, env.JWT_REFRESH_SECRET, {
+    algorithm: ALG,
+    expiresIn: env.JWT_REFRESH_TTL as any,
+  });
 
-export const verifyRefresh = (t: string) =>
-  jwt.verify(t, env.JWT_REFRESH_SECRET) as { id: number; iat: number; exp: number };
+export const verifyRefresh = (t: string) => {
+  const p = jwt.verify(t, env.JWT_REFRESH_SECRET, { algorithms: [ALG] }) as {
+    id: number; typ?: string; iat: number; exp: number;
+  };
+  if (p.typ && p.typ !== 'refresh') throw new Error('Tipo de token inválido');
+  return p;
+};
 
 export const authRequired = (req: Request, _res: Response, next: NextFunction) => {
   const header = req.headers.authorization;
   const token = header?.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return next(new HttpError(401, 'Não autenticado'));
   try {
-    req.user = jwt.verify(token, env.JWT_ACCESS_SECRET) as AuthUser;
+    const p = jwt.verify(token, env.JWT_ACCESS_SECRET, { algorithms: [ALG] }) as AuthUser & { typ?: string };
+    if (p.typ && p.typ !== 'access') return next(new HttpError(401, 'Token inválido'));
+    req.user = { id: p.id, email: p.email, role: p.role, nome: p.nome };
     return next();
   } catch {
     return next(new HttpError(401, 'Token inválido'));

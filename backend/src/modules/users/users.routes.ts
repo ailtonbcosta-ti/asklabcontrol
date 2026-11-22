@@ -35,8 +35,17 @@ const upsertSchema = z.object({
   email: z.string().email(),
   role: z.nativeEnum(Role),
   ativo: z.boolean().default(true),
-  senha: z.string().min(6).optional(),
+  senha: z.preprocess(
+    (v) => (v === '' || v === null ? undefined : v),
+    z.string().min(8, 'A senha deve ter ao menos 8 caracteres').max(200).optional(),
+  ),
 });
+
+function parseId(raw: string): number {
+  const id = Number(raw);
+  if (!Number.isInteger(id) || id <= 0) throw new HttpError(400, 'ID inválido');
+  return id;
+}
 
 usersRouter.post(
   '/',
@@ -64,8 +73,12 @@ usersRouter.patch(
   '/:id',
   requireRole(Role.ADMIN),
   ah(async (req, res) => {
-    const id = Number(req.params.id);
+    const id = parseId(req.params.id);
     const data = upsertSchema.partial().parse(req.body);
+    if (id === req.user!.id) {
+      if (data.ativo === false) throw new HttpError(400, 'Não é possível desativar a própria conta');
+      if (data.role && data.role !== Role.ADMIN) throw new HttpError(400, 'Não é possível remover o próprio perfil de administrador');
+    }
     const update: any = { ...data };
     if (data.email) update.email = data.email.toLowerCase();
     if (data.senha) update.senhaHash = await bcrypt.hash(data.senha, 10);
@@ -83,7 +96,7 @@ usersRouter.delete(
   '/:id',
   requireRole(Role.ADMIN),
   ah(async (req, res) => {
-    const id = Number(req.params.id);
+    const id = parseId(req.params.id);
     if (req.user!.id === id) throw new HttpError(400, 'Não é possível excluir a própria conta');
     await prisma.user.update({ where: { id }, data: { ativo: false } });
     res.json({ ok: true });

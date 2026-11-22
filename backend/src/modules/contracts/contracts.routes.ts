@@ -42,6 +42,7 @@ contractsRouter.get('/:id', ah(async (req, res) => {
     include: {
       laboratory: true,
       procedures: { include: { procedure: true } },
+      renewals: { orderBy: { createdAt: 'desc' } },
     },
   });
   if (!c) throw new HttpError(404, 'Contrato não encontrado');
@@ -130,6 +131,180 @@ contractsRouter.delete('/:id/procedures/:cpId', requireRole(Role.ADMIN, Role.GES
     await prisma.contractProcedure.update({ where: { id: cpId }, data: { ativo: false } });
     res.json({ ok: true, deleted: false });
   }
+}));
+
+// ─── Renovação ──────────────────────────────────────────
+// Reaproveita o mesmo contrato (mesmo id, histórico de autorizações e saldos):
+// troca a vigência e ajusta a lista de procedimentos (mantém/altera, inativa,
+// reativa e adiciona). A situação anterior fica registrada em contract_renewals.
+const renovarSchema = z
+  .object({
+    vigenciaInicio: z.coerce.date(),
+    vigenciaFim: z.coerce.date(),
+    numero: z.string().trim().min(1).optional(),
+    numeroCredenciamento: z.string().trim().optional().nullable(),
+    observacao: z.string().trim().max(1000).optional().nullable(),
+    existentes: z.array(z.object({
+      id: z.number().int().positive(),
+      ativo: z.boolean(),
+      qtdMensal: z.number().int().positive(),
+      valorUnitario: z.number().nonnegative(),
+    })),
+    novos: z.array(z.object({
+      procedureId: z.number().int().positive(),
+      qtdMensal: z.number().int().positive(),
+      valorUnitario: z.number().nonnegative(),
+    })).default([]),
+  })
+  .refine((d) => d.vigenciaFim > d.vigenciaInicio, {
+    message: 'O fim da vigência deve ser posterior ao início',
+    path: ['vigenciaFim'],
+  });
+
+contractsRouter.post('/:id/renovar', requireRole(Role.ADMIN, Role.GESTOR), ah(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) throw new HttpError(400, 'ID inválido');
+  const body = renovarSchema.parse(req.body);
+
+  const atual = await prisma.contract.findUnique({
+    where: { id },
+    include: { procedures: { include: { procedure: { select: { codigo: true } } } } },
+  });
+  if (!atual) throw new HttpError(404, 'Contrato não encontrado');
+
+  const porId = new Map(atual.procedures.map((cp) => [cp.id, cp]));
+  const porProcedure = new Map(atual.procedures.map((cp) => [cp.procedureId, cp]));
+
+  const vistos = new Set<number>();
+  for (const e of body.existentes) {
+    if (!porId.has(e.id)) throw new HttpError(400, `Procedimento ${e.id} não pertence a este contrato`);
+    if (vistos.has(e.id)) throw new HttpError(400, 'Procedimento repetido na lista');
+    vistos.add(e.id);
+  }
+
+  // "novo" que já existe no contrato (ex.: inativo) vira reativação do registro existente
+  const novosReais: typeof body.novos = [];
+  const existentes = [...body.existentes];
+  const novosProc = new Set<number>();
+  for (const n of body.novos) {
+    if (novosProc.has(n.procedureId)) throw new HttpError(400, 'Procedimento adicionado em duplicidade');
+    novosProc.add(n.procedureId);
+    const ja = porProcedure.get(n.procedureId);
+    if (ja) {
+      const idx = existentes.findIndex((e) => e.id === ja.id);
+      const item = { id: ja.id, ativo: true, qtdMensal: n.qtdMensal, valorUnitario: n.valorUnitario };
+      if (idx >= 0) existentes[idx] = item; else existentes.push(item);
+    } else {
+      novosReais.push(n);
+    }
+  }
+  if (novosReais.length) {
+    const encontrados = await prisma.procedure.count({ where: { id: { in: novosReais.map((n) => n.procedureId) } } });
+    if (encontrados !== novosReais.length) throw new HttpError(400, 'Procedimento a adicionar não encontrado');
+  }
+
+  const ativosDepois = existentes.filter((e) => e.ativo).length + novosReais.length;
+  if (ativosDepois === 0) throw new HttpError(400, 'O contrato renovado precisa ter ao menos um procedimento ativo');
+
+  const resumo = {
+    mantidos: [] as string[],
+    alterados: [] as string[],
+    inativados: [] as string[],
+    reativados: [] as string[],
+    adicionados: [] as string[],
+  };
+
+  const now = new Date();
+  const ano = now.getFullYear();
+  const mes = now.getMonth() + 1;
+
+  const result = await prisma.$transaction(async (tx) => {
+    for (const e of existentes) {
+      const cp = porId.get(e.id)!;
+      const cod = cp.procedure.codigo;
+      const mudouQtdValor = cp.qtdMensal !== e.qtdMensal || Number(cp.valorUnitario) !== e.valorUnitario;
+      if (!e.ativo) {
+        if (cp.ativo) resumo.inativados.push(cod);
+        if (cp.ativo) await tx.contractProcedure.update({ where: { id: cp.id }, data: { ativo: false } });
+        continue;
+      }
+      if (!cp.ativo) resumo.reativados.push(cod);
+      else if (mudouQtdValor) resumo.alterados.push(cod);
+      else resumo.mantidos.push(cod);
+      if (!cp.ativo || mudouQtdValor) {
+        await tx.contractProcedure.update({
+          where: { id: cp.id },
+          data: { ativo: true, qtdMensal: e.qtdMensal, valorUnitario: e.valorUnitario },
+        });
+      }
+    }
+    // procedimentos ativos que o cliente não enviou ficam como estão (mantidos)
+    for (const cp of atual.procedures) {
+      if (cp.ativo && !existentes.some((e) => e.id === cp.id)) resumo.mantidos.push(cp.procedure.codigo);
+    }
+
+    for (const n of novosReais) {
+      const cp = await tx.contractProcedure.create({
+        data: { contractId: id, procedureId: n.procedureId, qtdMensal: n.qtdMensal, valorUnitario: n.valorUnitario },
+        include: { procedure: { select: { codigo: true } } },
+      });
+      await tx.contractMonthlyBalance.create({ data: { contractProcedureId: cp.id, ano, mes, qtdConsumida: 0 } });
+      resumo.adicionados.push(cp.procedure.codigo);
+    }
+
+    const numeroNovo = body.numero || atual.numero;
+    const contrato = await tx.contract.update({
+      where: { id },
+      data: {
+        numero: numeroNovo,
+        ...(body.numeroCredenciamento !== undefined ? { numeroCredenciamento: body.numeroCredenciamento || null } : {}),
+        vigenciaInicio: body.vigenciaInicio,
+        vigenciaFim: body.vigenciaFim,
+        ativo: true,
+      },
+    });
+
+    const renovacao = await tx.contractRenewal.create({
+      data: {
+        contractId: id,
+        numeroAnterior: atual.numero,
+        numeroNovo,
+        vigenciaInicioAnterior: atual.vigenciaInicio,
+        vigenciaFimAnterior: atual.vigenciaFim,
+        vigenciaInicioNova: body.vigenciaInicio,
+        vigenciaFimNova: body.vigenciaFim,
+        observacao: body.observacao || null,
+        resumo,
+        userId: req.user!.id,
+        userNome: req.user!.nome,
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        userId: req.user!.id,
+        acao: 'RENOVAR_CONTRATO',
+        entidade: 'contract',
+        entityId: String(id),
+        payload: { renovacaoId: renovacao.id, resumo },
+        ip: req.ip,
+      },
+    });
+
+    return { contrato, renovacao };
+  });
+
+  res.json({
+    ...result.contrato,
+    renovacao: result.renovacao,
+    resumo: {
+      mantidos: resumo.mantidos.length,
+      alterados: resumo.alterados.length,
+      inativados: resumo.inativados.length,
+      reativados: resumo.reativados.length,
+      adicionados: resumo.adicionados.length,
+    },
+  });
 }));
 
 // ─── Importação por PDF ─────────────────────────────────

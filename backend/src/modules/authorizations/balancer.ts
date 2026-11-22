@@ -11,6 +11,7 @@ interface CandidatoCp {
   consumido: number;
   saldo: number;
   procedureId: number;
+  valorUnitario: number;
 }
 
 export interface PlanoEmissao {
@@ -64,6 +65,7 @@ export async function carregarSaldos(tx: Tx, ano: number, mes: number) {
       consumido: cp.monthlyBalances[0]?.qtdConsumida ?? 0,
       saldo: cp.qtdMensal - (cp.monthlyBalances[0]?.qtdConsumida ?? 0),
       procedureId: cp.procedureId,
+      valorUnitario: Number(cp.valorUnitario),
     })),
   }));
 }
@@ -90,7 +92,7 @@ export function planejar(
       for (const ex of exames) {
         const cp = c.procedimentos.find((p) => p.procedureId === ex.procedureId);
         if (!cp || cp.saldo < ex.qtd) return null;
-        items.push({ procedureId: ex.procedureId, qtd: ex.qtd, contractProcedureId: cp.contractProcedureId, valorUnitario: 0 });
+        items.push({ procedureId: ex.procedureId, qtd: ex.qtd, contractProcedureId: cp.contractProcedureId, valorUnitario: cp.valorUnitario });
       }
       return { contrato: c, items, indice: indiceConsumo(c, items) };
     })
@@ -122,7 +124,7 @@ export function planejar(
       const cp = c.procedimentos.find((p) => p.procedureId === ex.procedureId);
       if (cp && cp.saldo >= ex.qtd) {
         cobertosIds.add(ex.procedureId);
-        items.push({ procedureId: ex.procedureId, qtd: ex.qtd, contractProcedureId: cp.contractProcedureId, valorUnitario: 0 });
+        items.push({ procedureId: ex.procedureId, qtd: ex.qtd, contractProcedureId: cp.contractProcedureId, valorUnitario: cp.valorUnitario });
       }
     }
     if (cobertosIds.size === 0) continue;

@@ -10,6 +10,7 @@ import { AuthorizationEmit } from './pages/Authorizations/AuthorizationEmit';
 import { AuthorizationPrint } from './pages/Authorizations/AuthorizationPrint';
 import { ContractsList } from './pages/Contracts/ContractsList';
 import { ContractDetail } from './pages/Contracts/ContractDetail';
+import { ContractRenew } from './pages/Contracts/ContractRenew';
 import { LaboratoriesList } from './pages/Contracts/LaboratoriesList';
 import { ProceduresList } from './pages/Contracts/ProceduresList';
 import { ReportsHome } from './pages/Reports/ReportsHome';
@@ -41,6 +42,7 @@ export function App() {
         <Route path="/autorizacoes/emitir" element={<AuthorizationEmit />} />
         <Route path="/contratos" element={<ContractsList />} />
         <Route path="/contratos/:id" element={<ContractDetail />} />
+        <Route path="/contratos/:id/renovar" element={<Guard roles={['ADMIN', 'GESTOR']}><ContractRenew /></Guard>} />
         <Route path="/laboratorios" element={<LaboratoriesList />} />
         <Route path="/procedimentos" element={<ProceduresList />} />
         <Route path="/relatorios" element={<Guard roles={['ADMIN', 'GESTOR']}><ReportsHome /></Guard>} />

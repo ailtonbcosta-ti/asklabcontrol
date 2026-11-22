@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import multer from 'multer';
 import { Role } from '@prisma/client';
 import { prisma } from '../../config/prisma';
@@ -13,25 +14,74 @@ import { authRequired, requireRole } from '../../middleware/auth';
 const LOGO_DIR = path.join(env.UPLOAD_DIR, 'logos');
 fs.mkdirSync(LOGO_DIR, { recursive: true });
 
+// Extensão derivada do MIME (nunca do nome enviado), para impedir upload de .html/.js
+// disfarçado de imagem e servido a partir da mesma origem da aplicação.
+const EXT_BY_MIME: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+  'image/svg+xml': '.svg',
+};
+
 const logoStorage = multer.diskStorage({
   destination: LOGO_DIR,
   filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '') || '.png';
-    cb(null, `logo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`);
+    const ext = EXT_BY_MIME[file.mimetype.toLowerCase()] || '.png';
+    cb(null, `logo_${Date.now()}_${crypto.randomBytes(6).toString('hex')}${ext}`);
   },
 });
 const logoUpload = multer({
   storage: logoStorage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, cb) => {
-    if (!/^image\/(png|jpe?g|webp|gif|svg\+xml)$/i.test(file.mimetype)) {
-      return cb(new Error('Formato inválido (use PNG, JPG, WEBP, GIF ou SVG)'));
+    if (!EXT_BY_MIME[file.mimetype.toLowerCase()]) {
+      return cb(new HttpError(400, 'Formato inválido (use PNG, JPG, WEBP, GIF ou SVG)'));
     }
     cb(null, true);
   },
 });
 
+// Confere a assinatura real do arquivo (magic bytes) contra o MIME declarado.
+function conteudoConfere(filePath: string, mime: string): boolean {
+  const fd = fs.openSync(filePath, 'r');
+  const buf = Buffer.alloc(512);
+  const n = fs.readSync(fd, buf, 0, 512, 0);
+  fs.closeSync(fd);
+  const b = buf.subarray(0, n);
+  switch (mime.toLowerCase()) {
+    case 'image/png': return b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    case 'image/jpeg':
+    case 'image/jpg': return b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+    case 'image/gif': return b.subarray(0, 4).toString('ascii') === 'GIF8';
+    case 'image/webp': return b.subarray(0, 4).toString('ascii') === 'RIFF' && b.subarray(8, 12).toString('ascii') === 'WEBP';
+    case 'image/svg+xml': {
+      const txt = fs.readFileSync(filePath, 'utf8');
+      if (!/<svg[\s>]/i.test(txt)) return false;
+      // bloqueia conteúdo ativo dentro do SVG
+      return !/<script|<foreignObject|\bon[a-z]+\s*=|javascript:|<iframe|<embed|<object/i.test(txt);
+    }
+    default: return false;
+  }
+}
+
 export const configRouter = Router();
+
+// Público (tela de login): apenas identidade visual, sem dados sensíveis.
+configRouter.get('/public', ah(async (_req, res) => {
+  const cfg = await prisma.establishmentConfig.findUnique({
+    where: { id: 1 },
+    select: { razaoSocial: true, nomeFantasia: true, logoUrl: true },
+  });
+  res.set('Cache-Control', 'public, max-age=60');
+  res.json({
+    razaoSocial: cfg?.razaoSocial ?? null,
+    nomeFantasia: cfg?.nomeFantasia ?? null,
+    logoUrl: cfg?.logoUrl ?? null,
+  });
+}));
+
 configRouter.use(authRequired);
 
 configRouter.get('/', ah(async (_req, res) => {
@@ -43,6 +93,14 @@ configRouter.get('/', ah(async (_req, res) => {
   res.json(cfg);
 }));
 
+// Apenas arquivos enviados pelo próprio sistema ou URLs http(s) sem caracteres de quebra de atributo.
+const logoUrlField = z
+  .string()
+  .regex(/^(\/api\/uploads\/logos\/[A-Za-z0-9._-]+|https?:\/\/[^\s"'<>`]+)$/, 'URL de logotipo inválida')
+  .optional()
+  .nullable()
+  .or(z.literal('').transform(() => null));
+
 const schema = z.object({
   razaoSocial: z.string().min(2),
   nomeFantasia: z.string().optional().nullable(),
@@ -53,9 +111,9 @@ const schema = z.object({
   cep: z.string().optional().nullable(),
   telefone: z.string().optional().nullable(),
   email: z.string().email().optional().nullable().or(z.literal('').transform(() => null)),
-  logoUrl: z.string().optional().nullable(),
-  logoA4Url: z.string().optional().nullable(),
-  logoThermal80Url: z.string().optional().nullable(),
+  logoUrl: logoUrlField,
+  logoA4Url: logoUrlField,
+  logoThermal80Url: logoUrlField,
   validadeAutorizacaoDias: z.number().int().positive().optional(),
   cabecalhoImpressao: z.string().optional().nullable(),
   rodapeImpressao: z.string().optional().nullable(),
@@ -85,6 +143,10 @@ configRouter.post(
   ah(async (req, res) => {
     const tipo = tipoSchema.parse(req.query.tipo);
     if (!req.file) throw new HttpError(400, 'Arquivo não enviado');
+    if (!conteudoConfere(req.file.path, req.file.mimetype)) {
+      try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+      throw new HttpError(400, 'O conteúdo do arquivo não corresponde a uma imagem válida');
+    }
     const url = `/api/uploads/logos/${req.file.filename}`;
     const field = FIELD_BY_TIPO[tipo];
 

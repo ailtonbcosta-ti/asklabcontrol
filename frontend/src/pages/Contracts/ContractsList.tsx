@@ -2,10 +2,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { Pencil, Trash2, FolderOpen, FileUp } from 'lucide-react';
+import { Pencil, Trash2, FolderOpen, FileUp, RefreshCw } from 'lucide-react';
 import { ContractPdfImport } from './ContractPdfImport';
 import { api } from '../../lib/api';
 import { formatarDataUTC } from '../../lib/date';
+import { rotuloVigencia, situacaoVigencia } from '../../lib/vigencia';
+import { useAuth } from '../../stores/auth';
 
 export function ContractsList() {
   const qc = useQueryClient();
@@ -14,6 +16,8 @@ export function ContractsList() {
   const { data: labs } = useQuery({ queryKey: ['labs'], queryFn: () => api.get('/laboratories').then((r) => r.data) });
   const [edit, setEdit] = useState<any>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const role = useAuth((s) => s.user?.role);
+  const podeRenovar = role === 'ADMIN' || role === 'GESTOR';
 
   async function salvar() {
     try {
@@ -51,13 +55,14 @@ export function ContractsList() {
       </div>
       <div className="card">
         <table className="table">
-          <thead><tr><th>Número</th><th>Laboratório</th><th>Vigência</th><th>Procedimentos</th><th></th></tr></thead>
+          <thead><tr><th>Número</th><th>Laboratório</th><th>Vigência</th><th>Situação</th><th>Procedimentos</th><th></th></tr></thead>
           <tbody>
             {data?.map((c: any) => (
               <tr key={c.id}>
                 <td>{c.numero}</td>
                 <td>{c.laboratory?.razaoSocial}</td>
-                <td>{formatarDataUTC(c.vigenciaInicio)} → {formatarDataUTC(c.vigenciaFim)}</td>
+                <td className="whitespace-nowrap">{formatarDataUTC(c.vigenciaInicio)} → {formatarDataUTC(c.vigenciaFim)}</td>
+                <td className="whitespace-nowrap">{(() => { const r = rotuloVigencia(c); return <span className={r.classe}>{r.texto}</span>; })()}</td>
                 <td>{c._count?.procedures}</td>
                 <td className="whitespace-nowrap">
                   <button
@@ -67,6 +72,15 @@ export function ContractsList() {
                   >
                     <FolderOpen size={14} />
                   </button>
+                  {podeRenovar && ['vencido', 'a_vencer'].includes(situacaoVigencia(c).situacao) && (
+                    <button
+                      title="Renovar contrato"
+                      className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-brand-50 text-brand-600 ml-1"
+                      onClick={() => nav(`/contratos/${c.id}/renovar`)}
+                    >
+                      <RefreshCw size={14} />
+                    </button>
+                  )}
                   <button
                     title="Editar"
                     className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-slate-100 text-slate-600 hover:text-brand ml-1"

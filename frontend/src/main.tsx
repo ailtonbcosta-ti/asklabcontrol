@@ -13,7 +13,13 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={qc}>
       <BrowserRouter>
         <App />
-        <Toaster position="top-right" />
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            className: '!rounded-xl !text-sm !shadow-pop !border !border-slate-200',
+            success: { iconTheme: { primary: '#059669', secondary: '#fff' } },
+          }}
+        />
       </BrowserRouter>
     </QueryClientProvider>
   </React.StrictMode>,

@@ -13,6 +13,7 @@ import { pecRouter } from './modules/pec/pec.routes';
 import { cepRouter } from './modules/cep/cep.routes';
 import { reagentsRouter } from './modules/reagents/reagents.routes';
 import { bpaTerceirosRouter } from './modules/bpa-terceiros/bpa-terceiros.routes';
+import { backupRouter } from './modules/backup/backup.routes';
 
 export const router = Router();
 
@@ -30,3 +31,4 @@ router.use('/pec', pecRouter);
 router.use('/cep', cepRouter);
 router.use('/reagents', reagentsRouter);
 router.use('/bpa-terceiros', bpaTerceirosRouter);
+router.use('/backup', backupRouter);

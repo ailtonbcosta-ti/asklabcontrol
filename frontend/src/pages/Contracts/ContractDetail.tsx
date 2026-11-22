@@ -1,15 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
+import { History, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../lib/api';
 import { formatarDataUTC } from '../../lib/date';
+import { rotuloVigencia, situacaoVigencia } from '../../lib/vigencia';
+import { useAuth } from '../../stores/auth';
 
 interface SigtapItem { codigo: string; descricao: string; complexidade?: string | null; tpSexo?: string | null; }
 
 export function ContractDetail() {
   const { id } = useParams();
   const qc = useQueryClient();
+  const role = useAuth((s) => s.user?.role);
+  const podeRenovar = role === 'ADMIN' || role === 'GESTOR';
   const { data } = useQuery({ queryKey: ['contract', id], queryFn: () => api.get(`/contracts/${id}`).then((r) => r.data) });
   const [novo, setNovo] = useState<any | null>(null);
   const [editando, setEditando] = useState<any | null>(null);
@@ -152,8 +157,24 @@ export function ContractDetail() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">{data.numero} · {data.laboratory.razaoSocial}</h1>
-      <div className="text-sm text-slate-500">Vigência: {formatarDataUTC(data.vigenciaInicio)} → {formatarDataUTC(data.vigenciaFim)}</div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="page-title">{data.numero} · {data.laboratory.razaoSocial}</h1>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+            <span>Vigência: {formatarDataUTC(data.vigenciaInicio)} → {formatarDataUTC(data.vigenciaFim)}</span>
+            {(() => { const r = rotuloVigencia(data); return <span className={r.classe}>{r.texto}</span>; })()}
+            {data.numeroCredenciamento && <span>· Credenciamento {data.numeroCredenciamento}</span>}
+          </div>
+        </div>
+        {podeRenovar && (
+          <Link
+            to={`/contratos/${id}/renovar`}
+            className={['vencido', 'a_vencer'].includes(situacaoVigencia(data).situacao) ? 'btn-primary' : 'btn-outline'}
+          >
+            <RefreshCw size={16} /> Renovar contrato
+          </Link>
+        )}
+      </div>
 
       <div className="card">
         <div className="flex justify-between items-center mb-2">
@@ -212,6 +233,44 @@ export function ContractDetail() {
           </tbody>
         </table>
       </div>
+
+      {data.renewals?.length > 0 && (
+        <div className="card">
+          <h2 className="mb-3 flex items-center gap-2 font-semibold"><History size={18} className="text-slate-400" /> Histórico de renovações</h2>
+          <ol className="relative space-y-4 border-l border-slate-200 pl-5">
+            {data.renewals.map((r: any) => {
+              const z = r.resumo || {};
+              const n = (k: string) => (Array.isArray(z[k]) ? z[k].length : 0);
+              return (
+                <li key={r.id} className="relative">
+                  <span className="absolute -left-[26px] top-1 h-3 w-3 rounded-full border-2 border-white bg-brand-500 ring-1 ring-brand-200" />
+                  <div className="text-sm">
+                    <span className="font-medium text-slate-800">
+                      {formatarDataUTC(r.vigenciaInicioAnterior)} → {formatarDataUTC(r.vigenciaFimAnterior)}
+                    </span>
+                    <span className="mx-2 text-slate-400">renovado para</span>
+                    <span className="font-medium text-brand-700">
+                      {formatarDataUTC(r.vigenciaInicioNova)} → {formatarDataUTC(r.vigenciaFimNova)}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    {new Date(r.createdAt).toLocaleString('pt-BR')}{r.userNome ? ` · ${r.userNome}` : ''}
+                    {r.numeroAnterior !== r.numeroNovo && <> · número {r.numeroAnterior} → {r.numeroNovo}</>}
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {n('alterados') > 0 && <span className="badge-amber">{n('alterados')} alterados</span>}
+                    {n('reativados') > 0 && <span className="badge-green">{n('reativados')} reativados</span>}
+                    {n('adicionados') > 0 && <span className="badge-brand" title={z.adicionados.join(', ')}>{n('adicionados')} adicionados</span>}
+                    {n('inativados') > 0 && <span className="badge-red" title={z.inativados.join(', ')}>{n('inativados')} inativados</span>}
+                    {n('mantidos') > 0 && <span className="badge-slate">{n('mantidos')} mantidos</span>}
+                  </div>
+                  {r.observacao && <p className="mt-1 text-xs italic text-slate-500">{r.observacao}</p>}
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      )}
 
       {novo && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
