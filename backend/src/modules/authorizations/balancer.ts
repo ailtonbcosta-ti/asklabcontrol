@@ -30,11 +30,13 @@ type Tx = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction'
  * com saldo (qtd_mensal - qtd_consumida) por contract_procedure.
  * Retorna estrutura indexada por laboratório.
  */
-export async function carregarSaldos(tx: Tx, ano: number, mes: number) {
+export async function carregarSaldos(tx: Tx, ano: number, mes: number, opts: { criarFaltantes?: boolean } = {}) {
+  const criarFaltantes = opts.criarFaltantes ?? true;
   const hoje = new Date();
   const contratos = await tx.contract.findMany({
     where: { ativo: true, vigenciaInicio: { lte: hoje }, vigenciaFim: { gte: hoje }, laboratory: { ativo: true } },
     include: {
+      laboratory: { select: { razaoSocial: true, nomeFantasia: true } },
       procedures: {
         where: { ativo: true },
         include: {
@@ -45,7 +47,8 @@ export async function carregarSaldos(tx: Tx, ano: number, mes: number) {
   });
 
   // garante balance row de mês corrente para os pares ativos
-  for (const c of contratos) {
+  // (consultas somente-leitura pulam a criação e tratam a linha ausente como consumo 0)
+  if (criarFaltantes) for (const c of contratos) {
     for (const cp of c.procedures) {
       if (cp.monthlyBalances.length === 0) {
         const created = await tx.contractMonthlyBalance.create({
@@ -59,6 +62,7 @@ export async function carregarSaldos(tx: Tx, ano: number, mes: number) {
   return contratos.map((c) => ({
     contractId: c.id,
     laboratoryId: c.laboratoryId,
+    laboratorio: c.laboratory.nomeFantasia || c.laboratory.razaoSocial,
     procedimentos: c.procedures.map<CandidatoCp>((cp) => ({
       contractProcedureId: cp.id,
       qtdMensal: cp.qtdMensal,

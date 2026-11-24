@@ -2,10 +2,67 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../stores/auth';
 import toast from 'react-hot-toast';
-import { X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Loader2, X } from 'lucide-react';
 import { api } from '../../lib/api';
+import { MESES, fmtInt } from '../../lib/format';
 
 interface Item { procedureId: number; codigo: string; descricao: string; qtd: number; }
+
+type Situacao = 'DISPONIVEL' | 'INSUFICIENTE' | 'ESGOTADO' | 'SEM_CONTRATO';
+interface Disp {
+  procedureId: number; qtd: number; situacao: Situacao;
+  maiorSaldo: number; saldoTotal: number; laboratorios: number; pendenteNoPlano: boolean;
+}
+interface DispResp { ano: number; mes: number; laboratorioPlano: string | null; itens: Disp[] }
+
+/** Exame que, do jeito que está, não seria autorizado agora (vira pendência). */
+const temProblema = (d?: Disp) => !!d && (d.situacao !== 'DISPONIVEL' || d.pendenteNoPlano);
+
+function mesRef(r?: { ano: number; mes: number } | null) {
+  return r ? `${MESES[r.mes - 1].toLowerCase()}/${r.ano}` : 'este mês';
+}
+
+function descreverProblema(d: Disp, ref: string) {
+  switch (d.situacao) {
+    case 'SEM_CONTRATO': return 'nenhum contrato vigente cobre este exame';
+    case 'ESGOTADO': return `cota esgotada em ${ref}`;
+    case 'INSUFICIENTE': return `saldo insuficiente em ${ref} — disponível: ${fmtInt(d.maiorSaldo)}`;
+    default: return 'há cota, mas em outro laboratório que não cobre os demais exames';
+  }
+}
+
+/** Selo de cota do mês exibido na lista de exames. */
+function SeloCota({ d, mes, carregando }: { d?: Disp; mes: string; carregando: boolean }) {
+  if (!d) {
+    return carregando
+      ? <span className="inline-flex items-center gap-1 text-xs text-slate-400"><Loader2 size={12} className="animate-spin" /> verificando…</span>
+      : <span className="text-xs text-slate-400">—</span>;
+  }
+  if (d.situacao === 'SEM_CONTRATO') return <span className="badge-red" title="Nenhum contrato vigente cobre este exame">Sem contrato</span>;
+  if (d.situacao === 'ESGOTADO') return <span className="badge-red" title={`Cota esgotada em ${mes} em todos os laboratórios`}>Esgotado em {mes}</span>;
+  if (d.situacao === 'INSUFICIENTE') {
+    return (
+      <div className="space-y-0.5">
+        <span className="badge-amber">Saldo insuficiente</span>
+        <div className="text-[11px] text-slate-500">disponível: {fmtInt(d.maiorSaldo)}</div>
+      </div>
+    );
+  }
+  if (d.pendenteNoPlano) {
+    return (
+      <div className="space-y-0.5">
+        <span className="badge-amber" title="Há cota em outro laboratório, mas a autorização é emitida por um único laboratório">Ficará pendente</span>
+        <div className="text-[11px] text-slate-500">cota só em outro laboratório</div>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-0.5">
+      <span className="badge-green">Disponível</span>
+      <div className="text-[11px] text-slate-500">saldo {fmtInt(d.maiorSaldo)}</div>
+    </div>
+  );
+}
 
 export function AuthorizationEmit() {
   const nav = useNavigate();
@@ -34,6 +91,14 @@ export function AuthorizationEmit() {
   const procDebounce = useRef<number | null>(null);
   const procBlurTimer = useRef<number | null>(null);
   const [items, setItems] = useState<Item[]>([]);
+
+  // cota do mês dos exames da lista (rechecada a cada inclusão / mudança de qtd)
+  const [disp, setDisp] = useState<DispResp | null>(null);
+  const [dispCarregando, setDispCarregando] = useState(false);
+  const dispSeq = useRef(0);
+  const recemAdicionado = useRef<number | null>(null);
+  // cota das opções do autocomplete (para avisar antes mesmo de incluir)
+  const [dispOpcoes, setDispOpcoes] = useState<Record<number, Disp>>({});
 
   const [obs, setObs] = useState('');
   const [simulacao, setSimulacao] = useState<any>(null);
@@ -74,8 +139,54 @@ export function AuthorizationEmit() {
     }, 250);
     return () => { if (procDebounce.current) window.clearTimeout(procDebounce.current); };
   }, [procQ]);
+  // verifica a cota sempre que a lista de exames (ou as quantidades) muda
+  const chaveItens = items.map((i) => `${i.procedureId}:${Math.max(1, i.qtd || 1)}`).join(',');
+  useEffect(() => {
+    if (!chaveItens) { setDisp(null); setDispCarregando(false); return; }
+    const seq = ++dispSeq.current;
+    setDispCarregando(true);
+    const t = window.setTimeout(async () => {
+      try {
+        const exames = chaveItens.split(',').map((k) => { const [id, q] = k.split(':'); return { procedureId: Number(id), qtd: Number(q) }; });
+        const r = await api.post<DispResp>('/authorizations/disponibilidade', { exames });
+        if (seq !== dispSeq.current) return; // resposta antiga
+        setDisp(r.data);
+        const novo = recemAdicionado.current;
+        recemAdicionado.current = null;
+        const d = r.data.itens.find((x) => x.procedureId === novo);
+        if (d && temProblema(d)) {
+          const it = items.find((i) => i.procedureId === novo);
+          toast(`${it?.codigo ?? ''} ${it?.descricao ?? 'Exame'}: ${descreverProblema(d, mesRef(r.data))}. Será registrado como pendência se emitido.`,
+            { icon: '⚠️', duration: 6000 });
+        }
+      } catch {
+        if (seq === dispSeq.current) setDisp(null);
+      } finally {
+        if (seq === dispSeq.current) setDispCarregando(false);
+      }
+    }, 250);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chaveItens]);
+
+  // marca no autocomplete os procedimentos esgotados / sem contrato
+  useEffect(() => {
+    if (procOptions.length === 0) { setDispOpcoes({}); return; }
+    let vivo = true;
+    api.post<DispResp>('/authorizations/disponibilidade', { exames: procOptions.slice(0, 100).map((p) => ({ procedureId: p.id, qtd: 1 })) })
+      .then((r) => { if (vivo) setDispOpcoes(Object.fromEntries(r.data.itens.map((d) => [d.procedureId, d]))); })
+      .catch(() => { if (vivo) setDispOpcoes({}); });
+    return () => { vivo = false; };
+  }, [procOptions]);
+
+  const dispPorProc = new Map((disp?.itens ?? []).map((d) => [d.procedureId, d]));
+  const refMes = mesRef(disp);
+  const problemas = items.filter((i) => temProblema(dispPorProc.get(i.procedureId)));
+  const dispAtualizada = !!disp && !dispCarregando;
+
   function addItem(p: any) {
     if (items.find((i) => i.procedureId === p.id)) return;
+    recemAdicionado.current = p.id;
     setItems([...items, { procedureId: p.id, codigo: p.codigo, descricao: p.descricao, qtd: 1 }]);
   }
   function removeItem(id: number) { setItems(items.filter((i) => i.procedureId !== id)); }
@@ -204,6 +315,7 @@ export function AuthorizationEmit() {
               {procLoading && <div className="px-2 py-1 text-xs text-slate-500">buscando…</div>}
               {!procLoading && procOptions.map((p) => {
                 const jaAdicionado = items.some((i) => i.procedureId === p.id);
+                const dOp = dispOpcoes[p.id];
                 return (
                   <button
                     key={p.id}
@@ -217,6 +329,8 @@ export function AuthorizationEmit() {
                   >
                     <span className="font-mono text-xs text-slate-700">{p.codigo}</span> · {p.descricao}
                     {jaAdicionado && <span className="ml-2 text-[10px] text-slate-500">(já adicionado)</span>}
+                    {!jaAdicionado && dOp?.situacao === 'ESGOTADO' && <span className="badge-red ml-2">Esgotado no mês</span>}
+                    {!jaAdicionado && dOp?.situacao === 'SEM_CONTRATO' && <span className="badge-slate ml-2">Sem contrato</span>}
                   </button>
                 );
               })}
@@ -227,19 +341,52 @@ export function AuthorizationEmit() {
           )}
         </div>
         {items.length > 0 && (
-          <table className="table mt-2">
-            <thead><tr><th>Código</th><th>Descrição</th><th>Qtd</th><th></th></tr></thead>
+          <div className="mt-2 overflow-x-auto">
+          <table className="table">
+            <thead><tr><th>Código</th><th>Descrição</th><th>Qtd</th><th>Cota de {refMes}</th><th></th></tr></thead>
             <tbody>
-              {items.map((i) => (
-                <tr key={i.procedureId}>
-                  <td className="font-mono text-xs">{i.codigo}</td>
-                  <td>{i.descricao}</td>
-                  <td><input type="number" min={1} value={i.qtd} onChange={(e) => setItems(items.map((x) => x.procedureId === i.procedureId ? { ...x, qtd: Number(e.target.value) } : x))} className="input w-20" /></td>
-                  <td><button onClick={() => removeItem(i.procedureId)} className="text-red-600 text-xs">remover</button></td>
-                </tr>
-              ))}
+              {items.map((i) => {
+                const d = dispPorProc.get(i.procedureId);
+                const atual = d && d.qtd === Math.max(1, i.qtd || 1);
+                const nivel = !atual ? '' : d!.situacao === 'ESGOTADO' || d!.situacao === 'SEM_CONTRATO' ? 'bg-red-50/60' : temProblema(d) ? 'bg-amber-50/60' : '';
+                return (
+                  <tr key={i.procedureId} className={nivel}>
+                    <td className="font-mono text-xs">{i.codigo}</td>
+                    <td>{i.descricao}</td>
+                    <td><input type="number" min={1} value={i.qtd} onChange={(e) => setItems(items.map((x) => x.procedureId === i.procedureId ? { ...x, qtd: Number(e.target.value) } : x))} className="input w-20" /></td>
+                    <td className="whitespace-nowrap"><SeloCota d={atual ? d : undefined} mes={refMes} carregando={dispCarregando} /></td>
+                    <td><button onClick={() => removeItem(i.procedureId)} className="text-red-600 text-xs">remover</button></td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+          </div>
+        )}
+        {items.length > 0 && dispAtualizada && problemas.length > 0 && (
+          <div className="flex gap-2.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900" role="alert">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600" />
+            <div>
+              <div className="font-medium">
+                {problemas.length === items.length
+                  ? 'Nenhum dos exames pode ser autorizado agora.'
+                  : `${problemas.length} de ${items.length} exame(s) não poderão ser autorizados agora.`}
+                {' '}Se emitir assim, {problemas.length === 1 ? 'ele será registrado' : 'eles serão registrados'} como pendência:
+              </div>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[13px]">
+                {problemas.map((i) => (
+                  <li key={i.procedureId}>
+                    <span className="font-mono text-xs">{i.codigo}</span> {i.descricao} — {descreverProblema(dispPorProc.get(i.procedureId)!, refMes)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+        {items.length > 0 && dispAtualizada && problemas.length === 0 && disp?.laboratorioPlano && (
+          <div className="flex items-center gap-2 text-sm text-emerald-700">
+            <CheckCircle2 size={16} /> Todos os exames têm cota em {refMes} — a autorização será emitida para <strong>{disp.laboratorioPlano}</strong>.
+          </div>
         )}
       </div>
 

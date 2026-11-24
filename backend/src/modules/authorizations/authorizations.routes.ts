@@ -27,6 +27,66 @@ authorizationsRouter.post(
   }),
 );
 
+/**
+ * Disponibilidade de cota no mês corrente, por procedimento — somente leitura.
+ * Usada pela tela de emissão para avisar, já ao incluir o exame, se ele está
+ * esgotado / sem contrato, antes de o atendente tentar finalizar.
+ */
+const dispSchema = z.object({
+  exames: z.array(z.object({
+    procedureId: z.number().int().positive(),
+    qtd: z.number().int().positive().max(9999).default(1),
+  })).min(1).max(100),
+});
+
+authorizationsRouter.post(
+  '/disponibilidade',
+  ah(async (req, res) => {
+    const { exames } = dispSchema.parse(req.body);
+    const now = new Date();
+    const ano = now.getFullYear();
+    const mes = now.getMonth() + 1;
+    const contratos = await carregarSaldos(prisma, ano, mes, { criarFaltantes: false });
+
+    // um mesmo procedimento repetido na entrada é somado
+    const porProc = new Map<number, number>();
+    for (const e of exames) porProc.set(e.procedureId, (porProc.get(e.procedureId) ?? 0) + e.qtd);
+    const solicitados = [...porProc].map(([procedureId, qtd]) => ({ procedureId, qtd }));
+
+    const plano = solicitados.length ? planejar(contratos, solicitados) : { autorizacoes: [], pendentes: [] };
+    const pendenteNoPlano = new Set(plano.pendentes.map((p) => p.procedureId));
+    const labDoPlano = plano.autorizacoes[0]
+      ? contratos.find((c) => c.contractId === plano.autorizacoes[0].contractId)?.laboratorio ?? null
+      : null;
+
+    const itens = solicitados.map(({ procedureId, qtd }) => {
+      const ofertas = contratos
+        .map((c) => ({ c, cp: c.procedimentos.find((p) => p.procedureId === procedureId) }))
+        .filter((x) => x.cp);
+      const saldos = ofertas.map((x) => Math.max(0, x.cp!.saldo));
+      const maiorSaldo = saldos.length ? Math.max(...saldos) : 0;
+      const saldoTotal = saldos.reduce((s, v) => s + v, 0);
+      const situacao = ofertas.length === 0 ? 'SEM_CONTRATO'
+        : maiorSaldo <= 0 ? 'ESGOTADO'
+        : maiorSaldo < qtd ? 'INSUFICIENTE'
+        : 'DISPONIVEL';
+      return {
+        procedureId,
+        qtd,
+        situacao,
+        maiorSaldo,
+        saldoTotal,
+        laboratorios: ofertas.length,
+        // disponível isoladamente, mas o balanceamento (um único laboratório
+        // por autorização) não consegue incluí-lo junto com os demais
+        pendenteNoPlano: pendenteNoPlano.has(procedureId),
+      };
+    });
+
+    res.json({ ano, mes, laboratorioPlano: labDoPlano, itens });
+  }),
+);
+
 authorizationsRouter.post(
   '/',
   ah(async (req, res) => {
